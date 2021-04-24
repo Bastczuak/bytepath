@@ -1,8 +1,12 @@
+mod components;
+mod render;
+
 use sdl2::event::Event;
-use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use std::time::Duration;
+use specs::prelude::*;
+use crate::components::Position;
 
 const SCREEN_WIDTH: u32 = 480;
 const SCREEN_HEIGHT: u32 = 280;
@@ -30,6 +34,15 @@ fn main() -> Result<(), String> {
   canvas.clear();
   canvas.present();
 
+  let mut dispatcher = DispatcherBuilder::new().build();
+  let mut world = World::new();
+  dispatcher.setup(&mut world);
+  render::RenderSystemData::setup(&mut world);
+  world
+    .create_entity()
+    .with(Position{ x: (SCREEN_WIDTH / 2) as i16, y: (SCREEN_HEIGHT / 2) as i16 })
+    .build();
+
   let mut event_pump = sdl_context.event_pump()?;
 
   'running: loop {
@@ -44,11 +57,9 @@ fn main() -> Result<(), String> {
       }
     }
 
-    canvas.set_draw_color(Color::BLACK);
-    canvas.clear();
-
-    canvas.circle((SCREEN_WIDTH / 2) as i16, (SCREEN_HEIGHT / 2) as i16, 50, Color::WHITE)?;
-    canvas.present();
+    dispatcher.dispatch(&mut world);
+    world.maintain();
+    render::render(&mut canvas, Color::BLACK, world.system_data())?;
 
     std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
   }
