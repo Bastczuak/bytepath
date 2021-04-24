@@ -1,12 +1,12 @@
 mod components;
 mod render;
 
+use crate::components::Position;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::pixels::Color;
-use std::time::Duration;
+use sdl2::pixels::{Color, PixelFormatEnum};
 use specs::prelude::*;
-use crate::components::Position;
+use std::time::Duration;
 
 const SCREEN_WIDTH: u32 = 480;
 const SCREEN_HEIGHT: u32 = 280;
@@ -40,8 +40,17 @@ fn main() -> Result<(), String> {
   render::RenderSystemData::setup(&mut world);
   world
     .create_entity()
-    .with(Position{ x: (SCREEN_WIDTH / 2) as i16, y: (SCREEN_HEIGHT / 2) as i16 })
+    .with(Position {
+      x: (SCREEN_WIDTH / 2) as i16,
+      y: (SCREEN_HEIGHT / 2) as i16,
+    })
     .build();
+  world.create_entity().with(Position { x: 20, y: 20 }).build();
+
+  let texture_creator = canvas.texture_creator();
+  let mut texture = texture_creator
+    .create_texture_target(PixelFormatEnum::RGBA8888, SCREEN_WIDTH, SCREEN_HEIGHT)
+    .map_err(|e| e.to_string())?;
 
   let mut event_pump = sdl_context.event_pump()?;
 
@@ -57,9 +66,9 @@ fn main() -> Result<(), String> {
       }
     }
 
-    dispatcher.dispatch(&mut world);
+    dispatcher.dispatch(&world);
     world.maintain();
-    render::render(&mut canvas, Color::BLACK, world.system_data())?;
+    render::render(&mut canvas, Color::BLACK, &mut texture, world.system_data())?;
 
     std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
   }
