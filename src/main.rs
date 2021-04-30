@@ -1,7 +1,11 @@
 mod components;
 mod render;
+mod resources;
+mod systems;
 
 use crate::components::Position;
+use crate::resources::{DeltaTick, Shake};
+use crate::systems::ShakeSystem;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
@@ -34,10 +38,19 @@ fn main() -> Result<(), String> {
   canvas.clear();
   canvas.present();
 
-  let mut dispatcher = DispatcherBuilder::new().build();
+  let texture_creator = canvas.texture_creator();
+  let mut texture = texture_creator
+    .create_texture_target(PixelFormatEnum::RGBA8888, SCREEN_WIDTH, SCREEN_HEIGHT)
+    .map_err(|e| e.to_string())?;
+
+  let mut dispatcher = DispatcherBuilder::new()
+    .with(ShakeSystem::new(), "shake_system", &[])
+    .build();
   let mut world = World::new();
+  world.insert(DeltaTick::default());
   dispatcher.setup(&mut world);
   render::RenderSystemData::setup(&mut world);
+
   world
     .create_entity()
     .with(Position {
@@ -47,10 +60,8 @@ fn main() -> Result<(), String> {
     .build();
   world.create_entity().with(Position { x: 20, y: 20 }).build();
 
-  let texture_creator = canvas.texture_creator();
-  let mut texture = texture_creator
-    .create_texture_target(PixelFormatEnum::RGBA8888, SCREEN_WIDTH, SCREEN_HEIGHT)
-    .map_err(|e| e.to_string())?;
+  let sdl_timer = sdl_context.timer()?;
+  let mut last_tick = 0;
 
   let mut event_pump = sdl_context.event_pump()?;
 
@@ -62,12 +73,24 @@ fn main() -> Result<(), String> {
           keycode: Some(Keycode::Escape),
           ..
         } => break 'running,
+        Event::KeyDown {
+          keycode: Some(Keycode::Space),
+          ..
+        } => world.write_resource::<Shake>().is_shaking = true,
         _ => {}
       }
     }
 
+    {
+      let current_tick = sdl_timer.ticks();
+      let mut delta_tick = world.write_resource::<DeltaTick>();
+      *delta_tick = DeltaTick(current_tick - last_tick);
+      last_tick = current_tick;
+    }
+
     dispatcher.dispatch(&world);
     world.maintain();
+
     render::render(&mut canvas, Color::BLACK, &mut texture, world.system_data())?;
 
     std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));

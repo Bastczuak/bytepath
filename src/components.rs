@@ -1,6 +1,6 @@
 use specs::{prelude::*, Component};
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Debug)]
 #[storage(DenseVecStorage)]
 pub struct Position {
   pub x: i16,
