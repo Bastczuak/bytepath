@@ -27,40 +27,6 @@ impl ShakeSystem {
       time: 0.0,
     }
   }
-  //
-  // fn update(&mut self, sdl_ticks: u32) {
-  //   if let Some(ref mut time) = self.time {
-  //     *time += sdl_ticks as f32;
-  //     if *time > self.duration {
-  //       self.time = None;
-  //     }
-  //   }
-  // }
-  //
-  // fn amplitude(&mut self) -> Option<i32> {
-  //   if let Some(time) = self.time {
-  //     let s = time / 1000.0 * self.frequency;
-  //     let s0 = f32::floor(s);
-  //     let s1 = s0 + 1.0;
-  //     let k = if time >= self.duration {
-  //       0.0
-  //     } else {
-  //       (self.duration - time) / self.duration
-  //     };
-  //
-  //     let noise = |n| {
-  //       let n = n as usize;
-  //       if n >= self.samples.len() {
-  //         0.0
-  //       } else {
-  //         self.samples[n as usize]
-  //       }
-  //     };
-  //     return Some(((noise(s0) + (s - s0) * (noise(s1) - noise(s0))) * k * 16.0) as i32);
-  //   }
-  //
-  //   None
-  // }
 }
 
 impl<'a> System<'a> for ShakeSystem {
@@ -83,7 +49,7 @@ impl<'a> System<'a> for ShakeSystem {
         (self.duration - self.time) / self.duration
       };
 
-      fn noise<'a>(samples: &'a[f32]) -> impl Fn(f32) -> f32 + 'a {
+      fn noise<'a>(samples: &'a [f32]) -> impl Fn(f32) -> f32 + 'a {
         return move |n| {
           let n = n as usize;
           if n >= samples.len() {
@@ -95,9 +61,12 @@ impl<'a> System<'a> for ShakeSystem {
       }
       let noise_x = noise(&self.samples_x);
       let noise_y = noise(&self.samples_y);
+      let amplitude = |noise_fn: &dyn Fn(f32) -> f32| -> i32 {
+        ((noise_fn(s0) + (s - s0) * (noise_fn(s1) - noise_fn(s0))) * k * 16.0) as i32
+      };
 
-      shake.x = ((noise_x(s0) + (s - s0) * (noise_x(s1) - noise_x(s0))) * k * 16.0) as i32;
-      shake.y = ((noise_y(s0) + (s - s0) * (noise_y(s1) - noise_y(s0))) * k * 16.0) as i32;
+      shake.x = amplitude(&noise_x);
+      shake.y = amplitude(&noise_y);
     }
   }
 }
