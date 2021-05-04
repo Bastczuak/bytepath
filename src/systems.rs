@@ -1,4 +1,5 @@
-use crate::resources::{DeltaTick, Shake};
+use crate::components::{Angle, Player, Transform, Velocity};
+use crate::resources::{DeltaTick, Direction, MovementCommand, Shake};
 use rand::Rng;
 use specs::prelude::*;
 
@@ -50,14 +51,14 @@ impl<'a> System<'a> for ShakeSystem {
       };
 
       fn noise<'a>(samples: &'a [f32]) -> impl Fn(f32) -> f32 + 'a {
-        return move |n| {
+        move |n| {
           let n = n as usize;
           if n >= samples.len() {
             0.0
           } else {
             samples[n as usize]
           }
-        };
+        }
       }
       let noise_x = noise(&self.samples_x);
       let noise_y = noise(&self.samples_y);
@@ -67,6 +68,39 @@ impl<'a> System<'a> for ShakeSystem {
 
       shake.x = amplitude(&noise_x);
       shake.y = amplitude(&noise_y);
+    }
+  }
+}
+
+pub struct PlayerSystem;
+
+impl<'a> System<'a> for PlayerSystem {
+  type SystemData = (
+    Read<'a, Option<MovementCommand>>,
+    Read<'a, DeltaTick>,
+    ReadStorage<'a, Player>,
+    ReadStorage<'a, Velocity>,
+    WriteStorage<'a, Transform>,
+    WriteStorage<'a, Angle>,
+  );
+
+  fn run(&mut self, (movement_command, ticks, players, velocities, mut transfroms, mut angles): Self::SystemData) {
+    let movement_command = match &*movement_command {
+      Some(movement_command) => movement_command,
+      None => return,
+    };
+
+    for (_, velocity, transform, angle) in (&players, &velocities, &mut transfroms, &mut angles).join() {
+      match movement_command {
+        MovementCommand::Stop => {}
+        MovementCommand::Move(direction) => match direction {
+          Direction::Left => angle.radians -= angle.velocity * ticks.in_seconds(),
+          Direction::Right => angle.radians += angle.velocity * ticks.in_seconds(),
+        },
+      }
+
+      transform.translation.x += velocity.x * f32::cos(angle.radians);
+      transform.translation.y += velocity.y * f32::sin(angle.radians);
     }
   }
 }
