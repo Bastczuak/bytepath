@@ -50,7 +50,7 @@ impl<'a> System<'a> for ShakeSystem {
         (self.duration - self.time) / self.duration
       };
 
-      fn noise<'a>(samples: &'a [f32]) -> impl Fn(f32) -> f32 + 'a {
+      fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
         move |n| {
           let n = n as usize;
           if n >= samples.len() {
