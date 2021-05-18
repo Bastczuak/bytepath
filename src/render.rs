@@ -24,7 +24,15 @@ pub fn render(
       Point::new(position.x as i32, position.y as i32)
     };
     let screen_rect = Rect::from_center(screen_position, sprite.width, sprite.height);
-    canvas.copy_ex(&textures[sprite.position], None, screen_rect, sprite.rotation, None, false, false)?;
+    canvas.copy_ex(
+      &textures[sprite.position],
+      None,
+      screen_rect,
+      sprite.rotation,
+      None,
+      false,
+      false,
+    )?;
   }
   canvas.present();
 
