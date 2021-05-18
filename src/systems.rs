@@ -1,4 +1,5 @@
-use crate::components::{Angle, Player, Transform, Velocity};
+use crate::components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity};
+use crate::easings::ease_in_out_cubic;
 use crate::resources::{DeltaTick, Direction, MovementCommand, Shake};
 use rand::Rng;
 use specs::prelude::*;
@@ -11,8 +12,8 @@ pub struct ShakeSystem {
   time: f32,
 }
 
-impl ShakeSystem {
-  pub fn new() -> Self {
+impl Default for ShakeSystem {
+  fn default() -> Self {
     let duration = 1000.0;
     let frequency = 40.0;
     let sample_count = ((duration / 1000.0) * frequency) as usize;
@@ -80,17 +81,17 @@ impl<'a> System<'a> for PlayerSystem {
     Read<'a, DeltaTick>,
     ReadStorage<'a, Player>,
     ReadStorage<'a, Velocity>,
-    WriteStorage<'a, Transform>,
+    WriteStorage<'a, Position>,
     WriteStorage<'a, Angle>,
   );
 
-  fn run(&mut self, (movement_command, ticks, players, velocities, mut transfroms, mut angles): Self::SystemData) {
+  fn run(&mut self, (movement_command, ticks, players, velocities, mut positions, mut angles): Self::SystemData) {
     let movement_command = match &*movement_command {
       Some(movement_command) => movement_command,
       None => return,
     };
 
-    for (_, velocity, transform, angle) in (&players, &velocities, &mut transfroms, &mut angles).join() {
+    for (_, velocity, position, angle) in (&players, &velocities, &mut positions, &mut angles).join() {
       match movement_command {
         MovementCommand::Stop => {}
         MovementCommand::Move(direction) => match direction {
@@ -99,8 +100,76 @@ impl<'a> System<'a> for PlayerSystem {
         },
       }
 
-      transform.translation.x += velocity.x * f32::cos(angle.radians);
-      transform.translation.y += velocity.y * f32::sin(angle.radians);
+      position.x += velocity.x * f32::cos(angle.radians);
+      position.y += velocity.y * f32::sin(angle.radians);
+    }
+  }
+}
+pub struct ShootingSystem {
+  shoot: bool,
+}
+
+impl Default for ShootingSystem {
+  fn default() -> Self {
+    ShootingSystem { shoot: true }
+  }
+}
+
+impl<'a> System<'a> for ShootingSystem {
+  type SystemData = (
+    Entities<'a>,
+    Read<'a, DeltaTick>,
+    ReadStorage<'a, Player>,
+    ReadStorage<'a, Angle>,
+    WriteStorage<'a, ShootingEffect>,
+    WriteStorage<'a, Position>,
+    WriteStorage<'a, Sprite>,
+    WriteStorage<'a, Interpolation>,
+  );
+
+  fn run(
+    &mut self,
+    (entities, ticks, players, angles, mut effects, mut positions, mut sprites, mut interpolations): Self::SystemData,
+  ) {
+    use std::f32::consts::PI;
+
+    let mut x = 0.0;
+    let mut y = 0.0;
+    let mut rotation = 0.0;
+    for (_, angle, position, sprite) in (&players, &angles, &mut positions, &sprites).join() {
+      x = position.x + 0.5 * sprite.width as f32 * f32::cos(angle.radians);
+      y = position.y + 0.5 * sprite.width as f32 * f32::sin(angle.radians);
+      rotation = (angle.radians + PI / 4.0) * 180.0 / PI;
+    }
+
+    for (_, position, sprite, interpolation) in (&effects, &mut positions, &mut sprites, &mut interpolations).join() {
+      position.x = x;
+      position.y = y;
+      sprite.rotation = rotation as f64;
+      let value = interpolation.eval(ticks.in_seconds()) as u32;
+      sprite.width = value;
+      sprite.height = value;
+    }
+
+    if self.shoot {
+      let shooting_effect = entities.create();
+      effects.insert(shooting_effect, ShootingEffect).unwrap();
+      positions.insert(shooting_effect, Position { x, y }).unwrap();
+      sprites
+        .insert(
+          shooting_effect,
+          Sprite {
+            position: 1,
+            height: 8,
+            width: 8,
+            rotation: 45.0,
+          },
+        )
+        .unwrap();
+      interpolations
+        .insert(shooting_effect, Interpolation::new(8.0, 0.0, 0.25, ease_in_out_cubic))
+        .unwrap();
+      self.shoot = false
     }
   }
 }

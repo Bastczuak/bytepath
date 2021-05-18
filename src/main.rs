@@ -1,19 +1,61 @@
 mod components;
+mod easings;
 mod render;
 mod resources;
 mod systems;
 
-use crate::components::{Angle, Player, Transform, Velocity};
+use crate::components::{Angle, Player, Position, Sprite, Velocity};
 use crate::resources::{DeltaTick, Direction, MovementCommand, Shake};
-use crate::systems::{PlayerSystem, ShakeSystem};
+use crate::systems::{PlayerSystem, ShakeSystem, ShootingSystem};
 use sdl2::event::Event;
+use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::keyboard::Keycode;
-use sdl2::pixels::{Color, PixelFormatEnum};
+use sdl2::pixels::Color;
+use sdl2::rect::Rect;
+use sdl2::render::{Texture, TextureCreator, WindowCanvas};
+use sdl2::video::WindowContext;
 use specs::prelude::*;
 use std::time::Duration;
 
 const SCREEN_WIDTH: u32 = 480;
 const SCREEN_HEIGHT: u32 = 280;
+
+fn create_ship_texture<'a, 'b>(
+  texture_creator: &'a TextureCreator<WindowContext>,
+  canvas: &'b mut WindowCanvas,
+) -> Result<Texture<'a>, String> {
+  let mut texture = texture_creator
+    .create_texture_target(texture_creator.default_pixel_format(), 32, 32)
+    .map_err(|e| e.to_string())?;
+  canvas
+    .with_texture_canvas(&mut texture, |texture_canvas| {
+      texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
+      texture_canvas.clear();
+      texture_canvas.circle(16, 16, 15, Color::WHITE).unwrap();
+    })
+    .map_err(|e| e.to_string())?;
+
+  Ok(texture)
+}
+
+fn create_shooting_effect_texture<'a, 'b>(
+  texture_creator: &'a TextureCreator<WindowContext>,
+  canvas: &'b mut WindowCanvas,
+) -> Result<Texture<'a>, String> {
+  let mut texture = texture_creator
+    .create_texture_target(texture_creator.default_pixel_format(), 8, 8)
+    .map_err(|e| e.to_string())?;
+  canvas
+    .with_texture_canvas(&mut texture, |texture_canvas| {
+      texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
+      texture_canvas.clear();
+      texture_canvas.set_draw_color(Color::WHITE);
+      texture_canvas.fill_rect(Rect::new(0, 0, 8, 8)).unwrap();
+    })
+    .map_err(|e| e.to_string())?;
+
+  Ok(texture)
+}
 
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
@@ -43,17 +85,16 @@ fn main() -> Result<(), String> {
   canvas.present();
 
   let texture_creator = canvas.texture_creator();
-  let mut texture = texture_creator
-    .create_texture_target(PixelFormatEnum::RGBA8888, SCREEN_WIDTH, SCREEN_HEIGHT)
-    .map_err(|e| e.to_string())?;
+  let ship_texture = create_ship_texture(&texture_creator, &mut canvas)?;
+  let shooting_effect_texture = create_shooting_effect_texture(&texture_creator, &mut canvas)?;
+  let textures = [ship_texture, shooting_effect_texture];
 
   let mut dispatcher = DispatcherBuilder::new()
-    .with(ShakeSystem::new(), "shake_system", &[])
+    .with(ShakeSystem::default(), "shake_system", &[])
     .with(PlayerSystem, "player_system", &[])
+    .with(ShootingSystem::default(), "shooting_system", &[])
     .build();
   let mut world = World::new();
-  world.register::<Player>();
-  world.register::<Transform>();
   let movement_command: Option<MovementCommand> = None;
   world.insert(movement_command);
   dispatcher.setup(&mut world);
@@ -62,9 +103,18 @@ fn main() -> Result<(), String> {
   world
     .create_entity()
     .with(Player)
-    .with(Transform::new((SCREEN_WIDTH / 2) as i16, (SCREEN_HEIGHT / 2) as i16))
+    .with(Position {
+      x: SCREEN_WIDTH as f32 / 2.0,
+      y: SCREEN_HEIGHT as f32 / 2.0,
+    })
     .with(Angle::default())
     .with(Velocity::default())
+    .with(Sprite {
+      position: 0,
+      width: 32,
+      height: 32,
+      rotation: 0.0,
+    })
     .build();
 
   let sdl_timer = sdl_context.timer()?;
@@ -131,7 +181,7 @@ fn main() -> Result<(), String> {
     dispatcher.dispatch(&world);
     world.maintain();
 
-    render::render(&mut canvas, Color::BLACK, &mut texture, world.system_data())?;
+    render::render(&mut canvas, Color::BLACK, &textures, world.system_data())?;
 
     std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
   }
