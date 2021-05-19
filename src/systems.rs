@@ -1,5 +1,4 @@
 use crate::components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity};
-use crate::easings::ease_in_out_cubic;
 use crate::resources::{DeltaTick, Direction, MovementCommand, Shake};
 use rand::Rng;
 use specs::prelude::*;
@@ -57,7 +56,7 @@ impl<'a> System<'a> for ShakeSystem {
           if n >= samples.len() {
             0.0
           } else {
-            samples[n as usize]
+            samples[n]
           }
         }
       }
@@ -105,23 +104,14 @@ impl<'a> System<'a> for PlayerSystem {
     }
   }
 }
-pub struct ShootingSystem {
-  shoot: bool,
-}
-
-impl Default for ShootingSystem {
-  fn default() -> Self {
-    ShootingSystem { shoot: true }
-  }
-}
+pub struct ShootingSystem;
 
 impl<'a> System<'a> for ShootingSystem {
   type SystemData = (
-    Entities<'a>,
     Read<'a, DeltaTick>,
     ReadStorage<'a, Player>,
     ReadStorage<'a, Angle>,
-    WriteStorage<'a, ShootingEffect>,
+    ReadStorage<'a, ShootingEffect>,
     WriteStorage<'a, Position>,
     WriteStorage<'a, Sprite>,
     WriteStorage<'a, Interpolation>,
@@ -129,7 +119,7 @@ impl<'a> System<'a> for ShootingSystem {
 
   fn run(
     &mut self,
-    (entities, ticks, players, angles, mut effects, mut positions, mut sprites, mut interpolations): Self::SystemData,
+    (ticks, players, angles, effects, mut positions, mut sprites, mut interpolations): Self::SystemData,
   ) {
     use std::f32::consts::PI;
 
@@ -149,27 +139,6 @@ impl<'a> System<'a> for ShootingSystem {
       let value = interpolation.eval(ticks.in_seconds()) as u32;
       sprite.width = value;
       sprite.height = value;
-    }
-
-    if self.shoot {
-      let shooting_effect = entities.create();
-      effects.insert(shooting_effect, ShootingEffect).unwrap();
-      positions.insert(shooting_effect, Position { x, y }).unwrap();
-      sprites
-        .insert(
-          shooting_effect,
-          Sprite {
-            position: 1,
-            height: 8,
-            width: 8,
-            rotation: 45.0,
-          },
-        )
-        .unwrap();
-      interpolations
-        .insert(shooting_effect, Interpolation::new(8.0, 0.0, 0.25, ease_in_out_cubic))
-        .unwrap();
-      self.shoot = false
     }
   }
 }

@@ -4,7 +4,7 @@ mod render;
 mod resources;
 mod systems;
 
-use crate::components::{Angle, Player, Position, Sprite, Velocity};
+use crate::components::{Angle, Player, Position, Sprite, Velocity, ShootingEffect, Interpolation};
 use crate::resources::{DeltaTick, Direction, MovementCommand, Shake};
 use crate::systems::{PlayerSystem, ShakeSystem, ShootingSystem};
 use sdl2::event::Event;
@@ -16,6 +16,7 @@ use sdl2::render::{Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use specs::prelude::*;
 use std::time::Duration;
+use crate::easings::ease_in_out_cubic;
 
 const SCREEN_WIDTH: u32 = 480;
 const SCREEN_HEIGHT: u32 = 280;
@@ -92,7 +93,7 @@ fn main() -> Result<(), String> {
   let mut dispatcher = DispatcherBuilder::new()
     .with(ShakeSystem::default(), "shake_system", &[])
     .with(PlayerSystem, "player_system", &[])
-    .with(ShootingSystem::default(), "shooting_system", &[])
+    .with(ShootingSystem, "shooting_system", &[])
     .build();
   let mut world = World::new();
   let movement_command: Option<MovementCommand> = None;
@@ -115,6 +116,21 @@ fn main() -> Result<(), String> {
       height: 32,
       rotation: 0.0,
     })
+    .build();
+  world
+    .create_entity()
+    .with(ShootingEffect)
+    .with(Position {
+      x: SCREEN_WIDTH as f32 / 2.0,
+      y: SCREEN_HEIGHT as f32 / 2.0,
+    })
+    .with(Sprite {
+      position: 1,
+      width: 0,
+      height: 0,
+      rotation: 45.0,
+    })
+    .with(Interpolation::new(8.0, 0.0, 0.2, ease_in_out_cubic))
     .build();
 
   let sdl_timer = sdl_context.timer()?;
