@@ -13,7 +13,7 @@ use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
-use sdl2::render::{Texture, TextureCreator, WindowCanvas};
+use sdl2::render::{Texture, TextureCreator, WindowCanvas, BlendMode};
 use sdl2::video::WindowContext;
 use specs::prelude::*;
 use std::collections::HashSet;
@@ -36,6 +36,7 @@ fn create_ship_texture<'a, 'b>(
       texture_canvas.circle(16, 16, 15, Color::WHITE).unwrap();
     })
     .map_err(|e| e.to_string())?;
+  texture.set_blend_mode(BlendMode::Blend);
 
   Ok(texture)
 }
@@ -55,6 +56,7 @@ fn create_shooting_effect_texture<'a, 'b>(
       texture_canvas.fill_rect(Rect::new(0, 0, 8, 8)).unwrap();
     })
     .map_err(|e| e.to_string())?;
+  texture.set_blend_mode(BlendMode::Blend);
 
   Ok(texture)
 }
@@ -68,11 +70,12 @@ fn create_projectile_texture<'a, 'b>(
     .map_err(|e| e.to_string())?;
   canvas
     .with_texture_canvas(&mut texture, |texture_canvas| {
-      texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
+      texture_canvas.set_draw_color(Color::RGBA(255, 0, 0, 0));
       texture_canvas.clear();
       texture_canvas.circle(3, 3, 2, Color::WHITE).unwrap();
     })
     .map_err(|e| e.to_string())?;
+  texture.set_blend_mode(BlendMode::Blend);
 
   Ok(texture)
 }
