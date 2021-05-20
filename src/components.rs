@@ -10,6 +10,10 @@ pub struct Player;
 pub struct ShootingEffect;
 
 #[derive(Component, Default)]
+#[storage(NullStorage)]
+pub struct Projectile;
+
+#[derive(Component, Default)]
 #[storage(DenseVecStorage)]
 pub struct Position {
   pub x: f32,

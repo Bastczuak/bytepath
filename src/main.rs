@@ -4,9 +4,10 @@ mod render;
 mod resources;
 mod systems;
 
-use crate::components::{Angle, Player, Position, Sprite, Velocity, ShootingEffect, Interpolation};
+use crate::components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity};
+use crate::easings::ease_in_out_cubic;
 use crate::resources::{DeltaTick, Direction, MovementCommand, Shake};
-use crate::systems::{PlayerSystem, ShakeSystem, ShootingSystem};
+use crate::systems::{PlayerSystem, ProjectileSystem, ShakeSystem, ShootingSystem};
 use sdl2::event::Event;
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::keyboard::Keycode;
@@ -16,7 +17,6 @@ use sdl2::render::{Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use specs::prelude::*;
 use std::time::Duration;
-use crate::easings::ease_in_out_cubic;
 
 const SCREEN_WIDTH: u32 = 480;
 const SCREEN_HEIGHT: u32 = 280;
@@ -58,6 +58,24 @@ fn create_shooting_effect_texture<'a, 'b>(
   Ok(texture)
 }
 
+fn create_projectile_texture<'a, 'b>(
+  texture_creator: &'a TextureCreator<WindowContext>,
+  canvas: &'b mut WindowCanvas,
+) -> Result<Texture<'a>, String> {
+  let mut texture = texture_creator
+    .create_texture_target(texture_creator.default_pixel_format(), 6, 6)
+    .map_err(|e| e.to_string())?;
+  canvas
+    .with_texture_canvas(&mut texture, |texture_canvas| {
+      texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
+      texture_canvas.clear();
+      texture_canvas.circle(3, 3, 2, Color::WHITE).unwrap();
+    })
+    .map_err(|e| e.to_string())?;
+
+  Ok(texture)
+}
+
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
   let sdl_video = sdl_context.video()?;
@@ -86,14 +104,17 @@ fn main() -> Result<(), String> {
   canvas.present();
 
   let texture_creator = canvas.texture_creator();
-  let ship_texture = create_ship_texture(&texture_creator, &mut canvas)?;
-  let shooting_effect_texture = create_shooting_effect_texture(&texture_creator, &mut canvas)?;
-  let textures = [ship_texture, shooting_effect_texture];
+  let textures = [
+    create_ship_texture(&texture_creator, &mut canvas)?,
+    create_shooting_effect_texture(&texture_creator, &mut canvas)?,
+    create_projectile_texture(&texture_creator, &mut canvas)?,
+  ];
 
   let mut dispatcher = DispatcherBuilder::new()
     .with(ShakeSystem::default(), "shake_system", &[])
     .with(PlayerSystem, "player_system", &[])
-    .with(ShootingSystem, "shooting_system", &[])
+    .with(ShootingSystem, "shooting_system", &["player_system"])
+    .with(ProjectileSystem::default(), "projectile_system", &["player_system"])
     .build();
   let mut world = World::new();
   let movement_command: Option<MovementCommand> = None;

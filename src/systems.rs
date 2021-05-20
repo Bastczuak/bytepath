@@ -1,4 +1,4 @@
-use crate::components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity};
+use crate::components::{Angle, Interpolation, Player, Position, Projectile, ShootingEffect, Sprite, Velocity};
 use crate::resources::{DeltaTick, Direction, MovementCommand, Shake};
 use rand::Rng;
 use specs::prelude::*;
@@ -126,6 +126,7 @@ impl<'a> System<'a> for ShootingSystem {
     let mut x = 0.0;
     let mut y = 0.0;
     let mut rotation = 0.0;
+
     for (_, angle, position, sprite) in (&players, &angles, &mut positions, &sprites).join() {
       x = position.x + 0.5 * sprite.width as f32 * f32::cos(angle.radians);
       y = position.y + 0.5 * sprite.width as f32 * f32::sin(angle.radians);
@@ -139,6 +140,75 @@ impl<'a> System<'a> for ShootingSystem {
       let value = interpolation.eval(ticks.in_seconds()) as u32;
       sprite.width = value;
       sprite.height = value;
+    }
+  }
+}
+
+pub struct ProjectileSystem {
+  spawn_time_s: Option<f32>,
+}
+
+impl Default for ProjectileSystem {
+  fn default() -> Self {
+    ProjectileSystem {
+      spawn_time_s: Some(0.25),
+    }
+  }
+}
+
+impl<'a> System<'a> for ProjectileSystem {
+  type SystemData = (
+    Entities<'a>,
+    Read<'a, DeltaTick>,
+    ReadStorage<'a, Player>,
+    WriteStorage<'a, Velocity>,
+    WriteStorage<'a, Projectile>,
+    WriteStorage<'a, Angle>,
+    WriteStorage<'a, Position>,
+    WriteStorage<'a, Sprite>,
+  );
+
+  fn run(
+    &mut self,
+    (entities, ticks, players, mut velocities, mut projectiles, mut angles, mut positions, mut sprites): Self::SystemData,
+  ) {
+    for (_, velocity, position, angle) in (&projectiles, &velocities, &mut positions, &mut angles).join() {
+      position.x += velocity.x * f32::cos(angle.radians);
+      position.y += velocity.y * f32::sin(angle.radians);
+    }
+
+    if let Some(mut timer) = self.spawn_time_s.take() {
+      timer -= ticks.in_seconds();
+      if timer <= 0.0 {
+        let mut x = 0.0;
+        let mut y = 0.0;
+        let mut radians = 0.0;
+        for (_, angle, position, sprite) in (&players, &angles, &mut positions, &sprites).join() {
+          x = position.x + 0.8 * sprite.width as f32 * f32::cos(angle.radians);
+          y = position.y + 0.8 * sprite.width as f32 * f32::sin(angle.radians);
+          radians = angle.radians;
+        }
+
+        let projectile = entities.create();
+        projectiles.insert(projectile, Projectile).unwrap();
+        positions.insert(projectile, Position { x, y }).unwrap();
+        angles.insert(projectile, Angle { radians, velocity: 0.0 }).unwrap();
+        velocities.insert(projectile, Velocity { x: 3.5, y: 3.5 }).unwrap();
+        sprites
+          .insert(
+            projectile,
+            Sprite {
+              position: 2,
+              width: 6,
+              height: 6,
+              rotation: 0.0,
+            },
+          )
+          .unwrap();
+        self.spawn_time_s.replace(0.25);
+      } else {
+        self.spawn_time_s.replace(timer);
+      }
     }
   }
 }
