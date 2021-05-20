@@ -13,7 +13,7 @@ use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
-use sdl2::render::{Texture, TextureCreator, WindowCanvas, BlendMode};
+use sdl2::render::{BlendMode, Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use specs::prelude::*;
 use std::collections::HashSet;
@@ -194,7 +194,6 @@ fn main() -> Result<(), String> {
 
     dispatcher.dispatch(&world);
     world.maintain();
-
     render::render(&mut canvas, Color::BLACK, &textures, world.system_data())?;
 
     std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
