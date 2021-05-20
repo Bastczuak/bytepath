@@ -1,7 +1,9 @@
 use crate::components::{Angle, Interpolation, Player, Position, Projectile, ShootingEffect, Sprite, Velocity};
-use crate::resources::{DeltaTick, Direction, MovementCommand, Shake};
+use crate::resources::{DeltaTick, Shake};
 use rand::Rng;
+use sdl2::keyboard::Keycode;
 use specs::prelude::*;
+use std::collections::HashSet;
 
 pub struct ShakeSystem {
   duration: f32,
@@ -76,7 +78,7 @@ pub struct PlayerSystem;
 
 impl<'a> System<'a> for PlayerSystem {
   type SystemData = (
-    Read<'a, Option<MovementCommand>>,
+    Read<'a, HashSet<Keycode>>,
     Read<'a, DeltaTick>,
     ReadStorage<'a, Player>,
     ReadStorage<'a, Velocity>,
@@ -84,19 +86,14 @@ impl<'a> System<'a> for PlayerSystem {
     WriteStorage<'a, Angle>,
   );
 
-  fn run(&mut self, (movement_command, ticks, players, velocities, mut positions, mut angles): Self::SystemData) {
-    let movement_command = match &*movement_command {
-      Some(movement_command) => movement_command,
-      None => return,
-    };
-
+  fn run(&mut self, (keycodes, ticks, players, velocities, mut positions, mut angles): Self::SystemData) {
     for (_, velocity, position, angle) in (&players, &velocities, &mut positions, &mut angles).join() {
-      match movement_command {
-        MovementCommand::Stop => {}
-        MovementCommand::Move(direction) => match direction {
-          Direction::Left => angle.radians -= angle.velocity * ticks.in_seconds(),
-          Direction::Right => angle.radians += angle.velocity * ticks.in_seconds(),
-        },
+      for keycode in keycodes.iter() {
+        match keycode {
+          Keycode::D | Keycode::Left => angle.radians -= angle.velocity * ticks.in_seconds(),
+          Keycode::A | Keycode::Right => angle.radians += angle.velocity * ticks.in_seconds(),
+          _ => {}
+        }
       }
 
       position.x += velocity.x * f32::cos(angle.radians);

@@ -6,7 +6,7 @@ mod systems;
 
 use crate::components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity};
 use crate::easings::ease_in_out_cubic;
-use crate::resources::{DeltaTick, Direction, MovementCommand, Shake};
+use crate::resources::{DeltaTick, Shake};
 use crate::systems::{PlayerSystem, ProjectileSystem, ShakeSystem, ShootingSystem};
 use sdl2::event::Event;
 use sdl2::gfx::primitives::DrawRenderer;
@@ -16,6 +16,7 @@ use sdl2::rect::Rect;
 use sdl2::render::{Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use specs::prelude::*;
+use std::collections::HashSet;
 use std::time::Duration;
 
 const SCREEN_WIDTH: u32 = 480;
@@ -117,8 +118,6 @@ fn main() -> Result<(), String> {
     .with(ProjectileSystem::default(), "projectile_system", &["player_system"])
     .build();
   let mut world = World::new();
-  let movement_command: Option<MovementCommand> = None;
-  world.insert(movement_command);
   dispatcher.setup(&mut world);
   render::RenderSystemData::setup(&mut world);
 
@@ -171,42 +170,17 @@ fn main() -> Result<(), String> {
           keycode: Some(Keycode::Space),
           ..
         } => world.write_resource::<Shake>().is_shaking = true,
-        Event::KeyDown {
-          keycode: Some(Keycode::A),
-          ..
-        }
-        | Event::KeyDown {
-          keycode: Some(Keycode::Left),
-          ..
-        } => *world.write_resource() = Some(MovementCommand::Move(Direction::Left)),
-        Event::KeyDown {
-          keycode: Some(Keycode::D),
-          ..
-        }
-        | Event::KeyDown {
-          keycode: Some(Keycode::Right),
-          ..
-        } => *world.write_resource() = Some(MovementCommand::Move(Direction::Right)),
-        Event::KeyUp {
-          keycode: Some(Keycode::A),
-          repeat: false,
-          ..
-        }
-        | Event::KeyUp {
-          keycode: Some(Keycode::D),
-          repeat: false,
-          ..
-        }
-        | Event::KeyUp {
-          keycode: Some(Keycode::Left),
-          ..
-        }
-        | Event::KeyUp {
-          keycode: Some(Keycode::Right),
-          ..
-        } => *world.write_resource() = Some(MovementCommand::Stop),
         _ => {}
       }
+    }
+
+    {
+      let keycodes = event_pump
+        .keyboard_state()
+        .pressed_scancodes()
+        .filter_map(Keycode::from_scancode)
+        .collect::<HashSet<Keycode>>();
+      *world.write_resource() = keycodes;
     }
 
     {

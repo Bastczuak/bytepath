@@ -13,14 +13,3 @@ pub struct Shake {
   pub x: i32,
   pub y: i32,
 }
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub enum Direction {
-  Left,
-  Right,
-}
-
-pub enum MovementCommand {
-  Stop,
-  Move(Direction),
-}
