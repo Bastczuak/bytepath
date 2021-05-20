@@ -11,6 +11,7 @@ pub struct ShakeSystem {
   samples_x: Vec<f32>,
   samples_y: Vec<f32>,
   time: f32,
+  is_shaking: bool,
 }
 
 impl Default for ShakeSystem {
@@ -28,19 +29,28 @@ impl Default for ShakeSystem {
       samples_x,
       samples_y,
       time: 0.0,
+      is_shaking: false,
     }
   }
 }
 
 impl<'a> System<'a> for ShakeSystem {
-  type SystemData = (Read<'a, DeltaTick>, Write<'a, Shake>);
+  type SystemData = (Read<'a, HashSet<Keycode>>, Read<'a, DeltaTick>, Write<'a, Shake>);
 
-  fn run(&mut self, (delta, mut shake): Self::SystemData) {
-    if shake.is_shaking {
-      self.time += delta.0 as f32;
+  fn run(&mut self, (keycodes, ticks, mut shake): Self::SystemData) {
+    for keycode in keycodes.iter() {
+      match keycode {
+        Keycode::Space => self.is_shaking = true,
+        _ => {}
+      }
+    }
+
+    if self.is_shaking {
+      self.time += ticks.0 as f32;
       if self.time > self.duration {
         self.time = 0.0;
-        shake.is_shaking = false;
+        self.is_shaking = false;
+        return;
       }
 
       let s = self.time / 1000.0 * self.frequency;

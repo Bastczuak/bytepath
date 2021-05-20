@@ -18,11 +18,7 @@ pub fn render(
   canvas.clear();
 
   for (position, sprite) in (&positions, &sprites).join() {
-    let screen_position = if shake.is_shaking {
-      Point::new(position.x as i32 + shake.x, position.y as i32 + shake.y)
-    } else {
-      Point::new(position.x as i32, position.y as i32)
-    };
+    let screen_position = Point::new(position.x as i32 + shake.x, position.y as i32 + shake.y);
     let screen_rect = Rect::from_center(screen_position, sprite.width, sprite.height);
     canvas.copy_ex(
       &textures[sprite.position],

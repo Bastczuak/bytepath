@@ -6,7 +6,7 @@ mod systems;
 
 use crate::components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity};
 use crate::easings::ease_in_out_cubic;
-use crate::resources::{DeltaTick, Shake};
+use crate::resources::DeltaTick;
 use crate::systems::{PlayerSystem, ProjectileSystem, ShakeSystem, ShootingSystem};
 use sdl2::event::Event;
 use sdl2::gfx::primitives::DrawRenderer;
@@ -169,10 +169,6 @@ fn main() -> Result<(), String> {
           keycode: Some(Keycode::Escape),
           ..
         } => break 'running,
-        Event::KeyDown {
-          keycode: Some(Keycode::Space),
-          ..
-        } => world.write_resource::<Shake>().is_shaking = true,
         _ => {}
       }
     }

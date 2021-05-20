@@ -9,7 +9,6 @@ impl DeltaTick {
 
 #[derive(Default)]
 pub struct Shake {
-  pub is_shaking: bool,
   pub x: i32,
   pub y: i32,
 }
