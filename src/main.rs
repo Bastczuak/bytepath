@@ -66,13 +66,13 @@ fn create_projectile_texture<'a, 'b>(
   canvas: &'b mut WindowCanvas,
 ) -> Result<Texture<'a>, String> {
   let mut texture = texture_creator
-    .create_texture_target(texture_creator.default_pixel_format(), 6, 6)
+    .create_texture_target(texture_creator.default_pixel_format(), 16, 16)
     .map_err(|e| e.to_string())?;
   canvas
     .with_texture_canvas(&mut texture, |texture_canvas| {
-      texture_canvas.set_draw_color(Color::RGBA(255, 0, 0, 0));
+      texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
       texture_canvas.clear();
-      texture_canvas.circle(3, 3, 2, Color::WHITE).unwrap();
+      texture_canvas.circle(8, 8, 7, Color::WHITE).unwrap();
     })
     .map_err(|e| e.to_string())?;
   texture.set_blend_mode(BlendMode::Blend);

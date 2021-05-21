@@ -38,11 +38,8 @@ impl<'a> System<'a> for ShakeSystem {
   type SystemData = (Read<'a, HashSet<Keycode>>, Read<'a, DeltaTick>, Write<'a, Shake>);
 
   fn run(&mut self, (keycodes, ticks, mut shake): Self::SystemData) {
-    for keycode in keycodes.iter() {
-      match keycode {
-        Keycode::Space => self.is_shaking = true,
-        _ => {}
-      }
+    if keycodes.contains(&Keycode::Space) {
+      self.is_shaking = true;
     }
 
     if self.is_shaking {
@@ -96,7 +93,9 @@ impl<'a> System<'a> for PlayerSystem {
     WriteStorage<'a, Angle>,
   );
 
-  fn run(&mut self, (keycodes, ticks, players, velocities, mut positions, mut angles): Self::SystemData) {
+  fn run(&mut self, data: Self::SystemData) {
+    let (keycodes, ticks, players, velocities, mut positions, mut angles) = data;
+
     for (_, velocity, position, angle) in (&players, &velocities, &mut positions, &mut angles).join() {
       for keycode in keycodes.iter() {
         match keycode {
@@ -124,12 +123,10 @@ impl<'a> System<'a> for ShootingSystem {
     WriteStorage<'a, Interpolation>,
   );
 
-  fn run(
-    &mut self,
-    (ticks, players, angles, effects, mut positions, mut sprites, mut interpolations): Self::SystemData,
-  ) {
+  fn run(&mut self, data: Self::SystemData) {
     use std::f32::consts::PI;
 
+    let (ticks, players, angles, effects, mut positions, mut sprites, mut interpolations) = data;
     let mut x = 0.0;
     let mut y = 0.0;
     let mut rotation = 0.0;
@@ -167,6 +164,7 @@ impl<'a> System<'a> for ProjectileSystem {
   type SystemData = (
     Entities<'a>,
     Read<'a, DeltaTick>,
+    Read<'a, HashSet<Keycode>>,
     ReadStorage<'a, Player>,
     WriteStorage<'a, Velocity>,
     WriteStorage<'a, Projectile>,
@@ -175,10 +173,12 @@ impl<'a> System<'a> for ProjectileSystem {
     WriteStorage<'a, Sprite>,
   );
 
-  fn run(
-    &mut self,
-    (entities, ticks, players, mut velocities, mut projectiles, mut angles, mut positions, mut sprites): Self::SystemData,
-  ) {
+  fn run(&mut self, data: Self::SystemData) {
+    use std::f32::consts::PI;
+
+    let (entities, ticks, keycodes, players, mut velocities, mut projectiles, mut angles, mut positions, mut sprites) =
+      data;
+
     for (_, velocity, position, angle) in (&projectiles, &velocities, &mut positions, &mut angles).join() {
       position.x += velocity.x * f32::cos(angle.radians);
       position.y += velocity.y * f32::sin(angle.radians);
@@ -187,31 +187,62 @@ impl<'a> System<'a> for ProjectileSystem {
     if let Some(mut timer) = self.spawn_time_s.take() {
       timer -= ticks.in_seconds();
       if timer <= 0.0 {
-        let mut x = 0.0;
-        let mut y = 0.0;
+        let mut player_x = 0.0;
+        let mut player_y = 0.0;
         let mut radians = 0.0;
         for (_, angle, position, sprite) in (&players, &angles, &mut positions, &sprites).join() {
-          x = position.x + 0.8 * sprite.width as f32 * f32::cos(angle.radians);
-          y = position.y + 0.8 * sprite.width as f32 * f32::sin(angle.radians);
+          player_x = position.x + 0.8 * sprite.width as f32 * f32::cos(angle.radians);
+          player_y = position.y + 0.8 * sprite.width as f32 * f32::sin(angle.radians);
           radians = angle.radians;
         }
 
-        let projectile = entities.create();
-        projectiles.insert(projectile, Projectile).unwrap();
-        positions.insert(projectile, Position { x, y }).unwrap();
-        angles.insert(projectile, Angle { radians, velocity: 0.0 }).unwrap();
-        velocities.insert(projectile, Velocity { x: 3.5, y: 3.5 }).unwrap();
-        sprites
-          .insert(
-            projectile,
-            Sprite {
-              position: 2,
-              width: 6,
-              height: 6,
-              rotation: 0.0,
-            },
-          )
-          .unwrap();
+        if keycodes.contains(&Keycode::F1) {
+          for i in -1..2 {
+            let x = player_x + (i as f32 * 6.0).abs() * f32::cos(radians + i as f32 * PI / 2.0);
+            let y = player_y + (i as f32 * 6.0).abs() * f32::sin(radians + i as f32 * PI / 2.0);
+            let projectile = entities.create();
+            projectiles.insert(projectile, Projectile).unwrap();
+            positions.insert(projectile, Position { x, y }).unwrap();
+            angles.insert(projectile, Angle { radians, velocity: 0.0 }).unwrap();
+            velocities.insert(projectile, Velocity { x: 3.5, y: 3.5 }).unwrap();
+            sprites
+              .insert(
+                projectile,
+                Sprite {
+                  position: 2,
+                  width: 6,
+                  height: 6,
+                  rotation: 0.0,
+                },
+              )
+              .unwrap();
+          }
+        } else {
+          let projectile = entities.create();
+          projectiles.insert(projectile, Projectile).unwrap();
+          positions
+            .insert(
+              projectile,
+              Position {
+                x: player_x,
+                y: player_y,
+              },
+            )
+            .unwrap();
+          angles.insert(projectile, Angle { radians, velocity: 0.0 }).unwrap();
+          velocities.insert(projectile, Velocity { x: 3.5, y: 3.5 }).unwrap();
+          sprites
+            .insert(
+              projectile,
+              Sprite {
+                position: 2,
+                width: 6,
+                height: 6,
+                rotation: 0.0,
+              },
+            )
+            .unwrap();
+        }
         self.spawn_time_s.replace(0.25);
       } else {
         self.spawn_time_s.replace(timer);
