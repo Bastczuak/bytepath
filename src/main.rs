@@ -19,8 +19,8 @@ use specs::prelude::*;
 use std::collections::HashSet;
 use std::time::Duration;
 
-const SCREEN_WIDTH: u32 = 480;
-const SCREEN_HEIGHT: u32 = 280;
+pub const SCREEN_WIDTH: u32 = 480;
+pub const SCREEN_HEIGHT: u32 = 280;
 
 fn create_ship_texture<'a, 'b>(
   texture_creator: &'a TextureCreator<WindowContext>,

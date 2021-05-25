@@ -1,5 +1,6 @@
 use crate::components::{Angle, Interpolation, Player, Position, Projectile, ShootingEffect, Sprite, Velocity};
 use crate::resources::{DeltaTick, Shake};
+use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use rand::Rng;
 use sdl2::keyboard::Keycode;
 use specs::prelude::*;
@@ -86,18 +87,32 @@ pub struct PlayerSystem;
 
 impl<'a> System<'a> for PlayerSystem {
   type SystemData = (
+    Entities<'a>,
     Read<'a, HashSet<Keycode>>,
     Read<'a, DeltaTick>,
     ReadStorage<'a, Player>,
     ReadStorage<'a, Velocity>,
+    ReadStorage<'a, Sprite>,
     WriteStorage<'a, Position>,
     WriteStorage<'a, Angle>,
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (keycodes, ticks, players, velocities, mut positions, mut angles) = data;
+    let (entities, keycodes, ticks, players, velocities, sprites, mut positions, mut angles) = data;
 
-    for (_, velocity, position, angle) in (&players, &velocities, &mut positions, &mut angles).join() {
+    for (_, e, velocity, sprite, position, angle) in
+      (&players, &entities, &velocities, &sprites, &mut positions, &mut angles).join()
+    {
+      let sprite_offset_x = sprite.width / 2.0;
+      let sprite_offset_y = sprite.height / 2.0;
+      if (position.x - sprite_offset_x) < 0.0
+        || (position.x + sprite_offset_x) > SCREEN_WIDTH as f32
+        || (position.y - sprite_offset_y) < 0.0
+        || (position.y + sprite_offset_y) > SCREEN_HEIGHT as f32
+      {
+        entities.delete(e).unwrap();
+      }
+
       for keycode in keycodes.iter() {
         match keycode {
           Keycode::D | Keycode::Left => angle.radians -= angle.velocity * ticks.in_seconds(),
@@ -115,6 +130,7 @@ pub struct ShootingSystem;
 
 impl<'a> System<'a> for ShootingSystem {
   type SystemData = (
+    Entities<'a>,
     Read<'a, DeltaTick>,
     ReadStorage<'a, Player>,
     ReadStorage<'a, Angle>,
@@ -125,10 +141,19 @@ impl<'a> System<'a> for ShootingSystem {
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (ticks, players, angles, effects, mut positions, mut sprites, mut interpolations) = data;
+    let (entities, ticks, players, angles, effects, mut positions, mut sprites, mut interpolations) = data;
     let mut x = 0.0;
     let mut y = 0.0;
     let mut rotation = 0.0;
+    let number_of_players = (&players, &entities).join().count();
+
+    if number_of_players == 0 {
+      // delete all shooting effects if there are no more players
+      for (_, e) in (&effects, &entities).join() {
+        entities.delete(e).unwrap();
+      }
+      return;
+    }
 
     for (_, angle, position, sprite) in (&players, &angles, &mut positions, &sprites).join() {
       x = position.x + 0.5 * sprite.width as f32 * f32::cos(angle.radians);
@@ -180,9 +205,13 @@ impl<'a> System<'a> for ProjectileSystem {
 
     let (entities, lazy, ticks, keycodes, players, projectiles, velocities, angles, sprites, mut positions) = data;
 
-    for (_, velocity, angle, position) in (&projectiles, &velocities, &angles, &mut positions).join() {
+    for (_, e, velocity, angle, position) in (&projectiles, &entities, &velocities, &angles, &mut positions).join() {
       position.x += velocity.x * f32::cos(angle.radians);
       position.y += velocity.y * f32::sin(angle.radians);
+
+      if position.x < 0.0 || position.x > SCREEN_WIDTH as f32 || position.y < 0.0 || position.y > SCREEN_HEIGHT as f32 {
+        entities.delete(e).unwrap();
+      }
     }
 
     if let Some(mut timer) = self.spawn_time_s.take() {
@@ -202,7 +231,7 @@ impl<'a> System<'a> for ProjectileSystem {
                     + DISTANCE_MULTIPLIER * p_sprite.height as f32 * f32::sin(p_angle.radians)
                     + (i as f32 * PROJECTILE_HEIGHT).abs() * f32::sin(p_angle.radians + i as f32 * PI / 2.0),
                 })
-                .with(p_angle.clone())
+                .with(*p_angle)
                 .with(Velocity { x: 3.5, y: 3.5 })
                 .with(Sprite {
                   position: 2,
@@ -220,7 +249,7 @@ impl<'a> System<'a> for ProjectileSystem {
                 x: p_pos.x + DISTANCE_MULTIPLIER * p_sprite.width as f32 * f32::cos(p_angle.radians),
                 y: p_pos.y + DISTANCE_MULTIPLIER * p_sprite.height as f32 * f32::sin(p_angle.radians),
               })
-              .with(p_angle.clone())
+              .with(*p_angle)
               .with(Velocity { x: 3.5, y: 3.5 })
               .with(Sprite {
                 position: 2,
