@@ -4,6 +4,7 @@ use rand::Rng;
 use sdl2::keyboard::Keycode;
 use specs::prelude::*;
 use std::collections::HashSet;
+use std::f32::consts::PI;
 
 pub struct ShakeSystem {
   duration: f32,
@@ -124,8 +125,6 @@ impl<'a> System<'a> for ShootingSystem {
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    use std::f32::consts::PI;
-
     let (ticks, players, angles, effects, mut positions, mut sprites, mut interpolations) = data;
     let mut x = 0.0;
     let mut y = 0.0;
@@ -141,7 +140,7 @@ impl<'a> System<'a> for ShootingSystem {
       position.x = x;
       position.y = y;
       sprite.rotation = rotation as f64;
-      let value = interpolation.eval(ticks.in_seconds()) as u32;
+      let value = interpolation.eval(ticks.in_seconds());
       sprite.width = value;
       sprite.height = value;
     }
@@ -163,23 +162,25 @@ impl Default for ProjectileSystem {
 impl<'a> System<'a> for ProjectileSystem {
   type SystemData = (
     Entities<'a>,
+    Read<'a, LazyUpdate>,
     Read<'a, DeltaTick>,
     Read<'a, HashSet<Keycode>>,
     ReadStorage<'a, Player>,
-    WriteStorage<'a, Velocity>,
-    WriteStorage<'a, Projectile>,
-    WriteStorage<'a, Angle>,
+    ReadStorage<'a, Projectile>,
+    ReadStorage<'a, Velocity>,
+    ReadStorage<'a, Angle>,
+    ReadStorage<'a, Sprite>,
     WriteStorage<'a, Position>,
-    WriteStorage<'a, Sprite>,
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    use std::f32::consts::PI;
+    const DISTANCE_MULTIPLIER: f32 = 0.8;
+    const PROJECTILE_HEIGHT: f32 = 6.0;
+    const PROJECTILE_WIDTH: f32 = 6.0;
 
-    let (entities, ticks, keycodes, players, mut velocities, mut projectiles, mut angles, mut positions, mut sprites) =
-      data;
+    let (entities, lazy, ticks, keycodes, players, projectiles, velocities, angles, sprites, mut positions) = data;
 
-    for (_, velocity, position, angle) in (&projectiles, &velocities, &mut positions, &mut angles).join() {
+    for (_, velocity, angle, position) in (&projectiles, &velocities, &angles, &mut positions).join() {
       position.x += velocity.x * f32::cos(angle.radians);
       position.y += velocity.y * f32::sin(angle.radians);
     }
@@ -187,61 +188,48 @@ impl<'a> System<'a> for ProjectileSystem {
     if let Some(mut timer) = self.spawn_time_s.take() {
       timer -= ticks.in_seconds();
       if timer <= 0.0 {
-        let mut player_x = 0.0;
-        let mut player_y = 0.0;
-        let mut radians = 0.0;
-        for (_, angle, position, sprite) in (&players, &angles, &mut positions, &sprites).join() {
-          player_x = position.x + 0.8 * sprite.width as f32 * f32::cos(angle.radians);
-          player_y = position.y + 0.8 * sprite.width as f32 * f32::sin(angle.radians);
-          radians = angle.radians;
-        }
-
-        if keycodes.contains(&Keycode::F1) {
-          for i in -1..2 {
-            let x = player_x + (i as f32 * 6.0).abs() * f32::cos(radians + i as f32 * PI / 2.0);
-            let y = player_y + (i as f32 * 6.0).abs() * f32::sin(radians + i as f32 * PI / 2.0);
-            let projectile = entities.create();
-            projectiles.insert(projectile, Projectile).unwrap();
-            positions.insert(projectile, Position { x, y }).unwrap();
-            angles.insert(projectile, Angle { radians, velocity: 0.0 }).unwrap();
-            velocities.insert(projectile, Velocity { x: 3.5, y: 3.5 }).unwrap();
-            sprites
-              .insert(
-                projectile,
-                Sprite {
+        for (_, p_angle, p_pos, p_sprite) in (&players, &angles, &positions, &sprites).join() {
+          if keycodes.contains(&Keycode::F1) {
+            for i in -1..2 {
+              lazy
+                .create_entity(&entities)
+                .with(Projectile)
+                .with(Position {
+                  x: p_pos.x
+                    + DISTANCE_MULTIPLIER * p_sprite.width as f32 * f32::cos(p_angle.radians)
+                    + (i as f32 * PROJECTILE_WIDTH).abs() * f32::cos(p_angle.radians + i as f32 * PI / 2.0),
+                  y: p_pos.y
+                    + DISTANCE_MULTIPLIER * p_sprite.height as f32 * f32::sin(p_angle.radians)
+                    + (i as f32 * PROJECTILE_HEIGHT).abs() * f32::sin(p_angle.radians + i as f32 * PI / 2.0),
+                })
+                .with(p_angle.clone())
+                .with(Velocity { x: 3.5, y: 3.5 })
+                .with(Sprite {
                   position: 2,
-                  width: 6,
-                  height: 6,
+                  width: PROJECTILE_WIDTH,
+                  height: PROJECTILE_HEIGHT,
                   rotation: 0.0,
-                },
-              )
-              .unwrap();
-          }
-        } else {
-          let projectile = entities.create();
-          projectiles.insert(projectile, Projectile).unwrap();
-          positions
-            .insert(
-              projectile,
-              Position {
-                x: player_x,
-                y: player_y,
-              },
-            )
-            .unwrap();
-          angles.insert(projectile, Angle { radians, velocity: 0.0 }).unwrap();
-          velocities.insert(projectile, Velocity { x: 3.5, y: 3.5 }).unwrap();
-          sprites
-            .insert(
-              projectile,
-              Sprite {
+                })
+                .build();
+            }
+          } else {
+            lazy
+              .create_entity(&entities)
+              .with(Projectile)
+              .with(Position {
+                x: p_pos.x + DISTANCE_MULTIPLIER * p_sprite.width as f32 * f32::cos(p_angle.radians),
+                y: p_pos.y + DISTANCE_MULTIPLIER * p_sprite.height as f32 * f32::sin(p_angle.radians),
+              })
+              .with(p_angle.clone())
+              .with(Velocity { x: 3.5, y: 3.5 })
+              .with(Sprite {
                 position: 2,
-                width: 6,
-                height: 6,
+                width: PROJECTILE_WIDTH,
+                height: PROJECTILE_HEIGHT,
                 rotation: 0.0,
-              },
-            )
-            .unwrap();
+              })
+              .build();
+          }
         }
         self.spawn_time_s.replace(0.25);
       } else {

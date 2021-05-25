@@ -20,7 +20,7 @@ pub struct Position {
   pub y: f32,
 }
 
-#[derive(Component)]
+#[derive(Component, Copy, Clone)]
 #[storage(DenseVecStorage)]
 pub struct Angle {
   pub radians: f32,
@@ -85,7 +85,7 @@ impl Interpolation {
 #[storage(DenseVecStorage)]
 pub struct Sprite {
   pub position: usize,
-  pub width: u32,
-  pub height: u32,
+  pub width: f32,
+  pub height: f32,
   pub rotation: f64,
 }

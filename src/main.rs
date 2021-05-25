@@ -135,8 +135,8 @@ fn main() -> Result<(), String> {
     .with(Velocity::default())
     .with(Sprite {
       position: 0,
-      width: 32,
-      height: 32,
+      width: 32.0,
+      height: 32.0,
       rotation: 0.0,
     })
     .build();
@@ -149,8 +149,8 @@ fn main() -> Result<(), String> {
     })
     .with(Sprite {
       position: 1,
-      width: 0,
-      height: 0,
+      width: 0.0,
+      height: 0.0,
       rotation: 45.0,
     })
     .with(Interpolation::new(8.0, 0.0, 0.2, ease_in_out_cubic))
