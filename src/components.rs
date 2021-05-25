@@ -1,4 +1,5 @@
 use crate::easings::EasingFunction;
+use sdl2::rect::Rect;
 use specs::{prelude::*, Component};
 
 #[derive(Component, Default)]
@@ -88,4 +89,47 @@ pub struct Sprite {
   pub width: f32,
   pub height: f32,
   pub rotation: f64,
+}
+
+#[derive(Component)]
+#[storage(DenseVecStorage)]
+pub struct Animation {
+  pub time: f32,
+  pub position: usize,
+  pub width: f32,
+  pub height: f32,
+  pub rotation: f64,
+  pub current_frame: Option<Rect>,
+  pub first_frame: Rect,
+  pub second_frame: Rect,
+}
+
+impl Animation {
+  pub fn with_rotation(rotation: f64) -> Self {
+    Animation {
+      time: 0.0,
+      position: 0,
+      width: 0.0,
+      height: 0.0,
+      rotation,
+      current_frame: None,
+      first_frame: Rect::new(0, 0, 0, 0),
+      second_frame: Rect::new(0, 0, 0, 0),
+    }
+  }
+}
+
+impl Default for Animation {
+  fn default() -> Self {
+    Animation {
+      time: 0.0,
+      position: 0,
+      width: 0.0,
+      height: 0.0,
+      rotation: 0.0,
+      current_frame: None,
+      first_frame: Rect::new(0, 0, 0, 0),
+      second_frame: Rect::new(0, 0, 0, 0),
+    }
+  }
 }

@@ -1,8 +1,11 @@
-use crate::components::{Angle, Interpolation, Player, Position, Projectile, ShootingEffect, Sprite, Velocity};
+use crate::components::{
+  Angle, Animation, Interpolation, Player, Position, Projectile, ShootingEffect, Sprite, Velocity,
+};
 use crate::resources::{DeltaTick, Shake};
 use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use rand::Rng;
 use sdl2::keyboard::Keycode;
+use sdl2::rect::Rect;
 use specs::prelude::*;
 use std::collections::HashSet;
 use std::f32::consts::PI;
@@ -103,16 +106,6 @@ impl<'a> System<'a> for PlayerSystem {
     for (_, e, velocity, sprite, position, angle) in
       (&players, &entities, &velocities, &sprites, &mut positions, &mut angles).join()
     {
-      let sprite_offset_x = sprite.width / 2.0;
-      let sprite_offset_y = sprite.height / 2.0;
-      if (position.x - sprite_offset_x) < 0.0
-        || (position.x + sprite_offset_x) > SCREEN_WIDTH as f32
-        || (position.y - sprite_offset_y) < 0.0
-        || (position.y + sprite_offset_y) > SCREEN_HEIGHT as f32
-      {
-        entities.delete(e).unwrap();
-      }
-
       for keycode in keycodes.iter() {
         match keycode {
           Keycode::D | Keycode::Left => angle.radians -= angle.velocity * ticks.in_seconds(),
@@ -123,6 +116,16 @@ impl<'a> System<'a> for PlayerSystem {
 
       position.x += velocity.x * f32::cos(angle.radians);
       position.y += velocity.y * f32::sin(angle.radians);
+
+      let sprite_offset_x = sprite.width / 2.0;
+      let sprite_offset_y = sprite.height / 2.0;
+      if (position.x - sprite_offset_x) < 0.0
+        || (position.x + sprite_offset_x) > SCREEN_WIDTH as f32
+        || (position.y - sprite_offset_y) < 0.0
+        || (position.y + sprite_offset_y) > SCREEN_HEIGHT as f32
+      {
+        entities.delete(e).unwrap();
+      }
     }
   }
 }
@@ -209,6 +212,50 @@ impl<'a> System<'a> for ProjectileSystem {
       position.x += velocity.x * f32::cos(angle.radians);
       position.y += velocity.y * f32::sin(angle.radians);
 
+      if position.x < 0.0 {
+        lazy
+          .create_entity(&entities)
+          .with(Position {
+            x: position.x + 1.5,
+            y: position.y,
+          })
+          .with(Animation::with_rotation(90.0))
+          .build();
+      }
+
+      if position.x > SCREEN_WIDTH as f32 {
+        lazy
+          .create_entity(&entities)
+          .with(Position {
+            x: position.x - 1.5,
+            y: position.y,
+          })
+          .with(Animation::with_rotation(90.0))
+          .build();
+      }
+
+      if position.y < 0.0 {
+        lazy
+          .create_entity(&entities)
+          .with(Position {
+            x: position.x,
+            y: position.y + 1.5,
+          })
+          .with(Animation::with_rotation(0.0))
+          .build();
+      }
+
+      if position.y > SCREEN_HEIGHT as f32 {
+        lazy
+          .create_entity(&entities)
+          .with(Position {
+            x: position.x,
+            y: position.y - 1.5,
+          })
+          .with(Animation::with_rotation(0.0))
+          .build();
+      }
+
       if position.x < 0.0 || position.x > SCREEN_WIDTH as f32 || position.y < 0.0 || position.y > SCREEN_HEIGHT as f32 {
         entities.delete(e).unwrap();
       }
@@ -263,6 +310,37 @@ impl<'a> System<'a> for ProjectileSystem {
         self.spawn_time_s.replace(0.25);
       } else {
         self.spawn_time_s.replace(timer);
+      }
+    }
+  }
+}
+
+pub struct ProjectileDeathSystem;
+
+impl<'a> System<'a> for ProjectileDeathSystem {
+  type SystemData = (Entities<'a>, Read<'a, DeltaTick>, WriteStorage<'a, Animation>);
+
+  fn run(&mut self, data: Self::SystemData) {
+    let (entities, ticks, mut animations) = data;
+
+    for (e, animation) in (&entities, &mut animations).join() {
+      animation.time += ticks.in_seconds();
+
+      if animation.current_frame.is_none() {
+        animation.position = 3;
+        animation.width = 6.0;
+        animation.height = 3.0;
+        animation.first_frame = Rect::new(0, 0, 6, 3);
+        animation.second_frame = Rect::new(0, 3, 6, 6);
+        animation.current_frame = Some(animation.first_frame);
+      }
+
+      if animation.time >= 0.1 {
+        animation.current_frame = Some(animation.second_frame);
+      }
+
+      if animation.time >= 0.25 {
+        entities.delete(e).unwrap();
       }
     }
   }

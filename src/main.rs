@@ -7,7 +7,7 @@ mod systems;
 use crate::components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity};
 use crate::easings::ease_in_out_cubic;
 use crate::resources::DeltaTick;
-use crate::systems::{PlayerSystem, ProjectileSystem, ShakeSystem, ShootingSystem};
+use crate::systems::{PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem};
 use sdl2::event::Event;
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::keyboard::Keycode;
@@ -80,6 +80,28 @@ fn create_projectile_texture<'a, 'b>(
   Ok(texture)
 }
 
+fn create_projectile_death_texture<'a, 'b>(
+  texture_creator: &'a TextureCreator<WindowContext>,
+  canvas: &'b mut WindowCanvas,
+) -> Result<Texture<'a>, String> {
+  let mut texture = texture_creator
+    .create_texture_target(texture_creator.default_pixel_format(), 6, 6)
+    .map_err(|e| e.to_string())?;
+  canvas
+    .with_texture_canvas(&mut texture, |texture_canvas| {
+      texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
+      texture_canvas.clear();
+      texture_canvas.set_draw_color(Color::WHITE);
+      texture_canvas.fill_rect(Rect::new(0, 0, 6, 3)).unwrap();
+      texture_canvas.set_draw_color(Color::RGB(241, 103, 69));
+      texture_canvas.fill_rect(Rect::new(0, 3, 6, 6)).unwrap();
+    })
+    .map_err(|e| e.to_string())?;
+  texture.set_blend_mode(BlendMode::Blend);
+
+  Ok(texture)
+}
+
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
   let sdl_video = sdl_context.video()?;
@@ -112,6 +134,7 @@ fn main() -> Result<(), String> {
     create_ship_texture(&texture_creator, &mut canvas)?,
     create_shooting_effect_texture(&texture_creator, &mut canvas)?,
     create_projectile_texture(&texture_creator, &mut canvas)?,
+    create_projectile_death_texture(&texture_creator, &mut canvas)?,
   ];
 
   let mut dispatcher = DispatcherBuilder::new()
@@ -119,6 +142,7 @@ fn main() -> Result<(), String> {
     .with(PlayerSystem, "player_system", &[])
     .with(ShootingSystem, "shooting_system", &["player_system"])
     .with(ProjectileSystem::default(), "projectile_system", &["player_system"])
+    .with(ProjectileDeathSystem, "projectile_death_system", &["projectile_system"])
     .build();
   let mut world = World::new();
   dispatcher.setup(&mut world);
