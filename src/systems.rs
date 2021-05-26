@@ -241,7 +241,7 @@ impl<'a> System<'a> for ProjectileSystem {
             x: position.x,
             y: position.y + 1.5,
           })
-          .with(Animation::with_rotation(0.0))
+          .with(Animation::default())
           .build();
       }
 
@@ -252,7 +252,7 @@ impl<'a> System<'a> for ProjectileSystem {
             x: position.x,
             y: position.y - 1.5,
           })
-          .with(Animation::with_rotation(0.0))
+          .with(Animation::default())
           .build();
       }
 
