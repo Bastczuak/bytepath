@@ -10,7 +10,7 @@ edition = "2018"
 rand = "0.8.3"
 
 [dependencies.specs]
-version = "0.16.1"
+version = "0.17"
 features = ["specs-derive"]
 
 [dependencies.sdl2]
