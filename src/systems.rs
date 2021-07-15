@@ -117,8 +117,8 @@ impl<'a> System<'a> for PlayerSystem {
       position.x += velocity.x * f32::cos(angle.radians);
       position.y += velocity.y * f32::sin(angle.radians);
 
-      let sprite_offset_x = sprite.region.width() as f32 / 2.0;
-      let sprite_offset_y = sprite.region.height() as f32 / 2.0;
+      let sprite_offset_x = sprite.width() / 2.0;
+      let sprite_offset_y = sprite.height() / 2.0;
       if (position.x - sprite_offset_x) < 0.0
         || (position.x + sprite_offset_x) > SCREEN_WIDTH as f32
         || (position.y - sprite_offset_y) < 0.0
@@ -159,8 +159,8 @@ impl<'a> System<'a> for ShootingSystem {
     }
 
     for (_, angle, position, sprite) in (&players, &angles, &mut positions, &sprites).join() {
-      x = position.x + 0.5 * sprite.region.width() as f32 * f32::cos(angle.radians);
-      y = position.y + 0.5 * sprite.region.width() as f32 * f32::sin(angle.radians);
+      x = position.x + 0.5 * sprite.width() * f32::cos(angle.radians);
+      y = position.y + 0.5 * sprite.width() * f32::sin(angle.radians);
       rotation = (angle.radians + PI / 4.0) * 180.0 / PI;
     }
 
@@ -266,10 +266,10 @@ impl<'a> System<'a> for ProjectileSystem {
                 .with(Projectile)
                 .with(Position {
                   x: p_pos.x
-                    + DISTANCE_MULTIPLIER * p_sprite.region.width() as f32 * f32::cos(p_angle.radians)
+                    + DISTANCE_MULTIPLIER * p_sprite.width() * f32::cos(p_angle.radians)
                     + (i as f32 * PROJECTILE_WIDTH).abs() * f32::cos(p_angle.radians + i as f32 * PI / 2.0),
                   y: p_pos.y
-                    + DISTANCE_MULTIPLIER * p_sprite.region.height() as f32 * f32::sin(p_angle.radians)
+                    + DISTANCE_MULTIPLIER * p_sprite.height() * f32::sin(p_angle.radians)
                     + (i as f32 * PROJECTILE_HEIGHT).abs() * f32::sin(p_angle.radians + i as f32 * PI / 2.0),
                 })
                 .with(*p_angle)
@@ -286,8 +286,8 @@ impl<'a> System<'a> for ProjectileSystem {
               .create_entity(&entities)
               .with(Projectile)
               .with(Position {
-                x: p_pos.x + DISTANCE_MULTIPLIER * p_sprite.region.width() as f32 * f32::cos(p_angle.radians),
-                y: p_pos.y + DISTANCE_MULTIPLIER * p_sprite.region.height() as f32 * f32::sin(p_angle.radians),
+                x: p_pos.x + DISTANCE_MULTIPLIER * p_sprite.width() * f32::cos(p_angle.radians),
+                y: p_pos.y + DISTANCE_MULTIPLIER * p_sprite.height() * f32::sin(p_angle.radians),
               })
               .with(*p_angle)
               .with(Velocity { x: 3.5, y: 3.5 })

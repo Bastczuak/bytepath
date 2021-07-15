@@ -90,6 +90,16 @@ pub struct Sprite {
   pub rotation: f64,
 }
 
+impl Sprite {
+  pub fn width(&self) -> f32 {
+    self.region.width() as f32
+  }
+
+  pub fn height(&self) -> f32 {
+    self.region.height() as f32
+  }
+}
+
 #[derive(Component)]
 #[storage(DenseVecStorage)]
 pub struct Animation {
