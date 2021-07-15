@@ -117,8 +117,8 @@ impl<'a> System<'a> for PlayerSystem {
       position.x += velocity.x * f32::cos(angle.radians);
       position.y += velocity.y * f32::sin(angle.radians);
 
-      let sprite_offset_x = sprite.width / 2.0;
-      let sprite_offset_y = sprite.height / 2.0;
+      let sprite_offset_x = sprite.region.width() as f32 / 2.0;
+      let sprite_offset_y = sprite.region.height() as f32 / 2.0;
       if (position.x - sprite_offset_x) < 0.0
         || (position.x + sprite_offset_x) > SCREEN_WIDTH as f32
         || (position.y - sprite_offset_y) < 0.0
@@ -159,8 +159,8 @@ impl<'a> System<'a> for ShootingSystem {
     }
 
     for (_, angle, position, sprite) in (&players, &angles, &mut positions, &sprites).join() {
-      x = position.x + 0.5 * sprite.width as f32 * f32::cos(angle.radians);
-      y = position.y + 0.5 * sprite.width as f32 * f32::sin(angle.radians);
+      x = position.x + 0.5 * sprite.region.width() as f32 * f32::cos(angle.radians);
+      y = position.y + 0.5 * sprite.region.width() as f32 * f32::sin(angle.radians);
       rotation = (angle.radians + PI / 4.0) * 180.0 / PI;
     }
 
@@ -169,8 +169,7 @@ impl<'a> System<'a> for ShootingSystem {
       position.y = y;
       sprite.rotation = rotation as f64;
       let value = interpolation.eval(ticks.in_seconds());
-      sprite.width = value;
-      sprite.height = value;
+      sprite.region = Rect::new(0, 0, value as u32, value as u32);
     }
   }
 }
@@ -203,8 +202,8 @@ impl<'a> System<'a> for ProjectileSystem {
 
   fn run(&mut self, data: Self::SystemData) {
     const DISTANCE_MULTIPLIER: f32 = 0.8;
-    const PROJECTILE_HEIGHT: f32 = 6.0;
-    const PROJECTILE_WIDTH: f32 = 6.0;
+    const PROJECTILE_HEIGHT: f32 = 8.0;
+    const PROJECTILE_WIDTH: f32 = 8.0;
 
     let (entities, lazy, ticks, keycodes, players, projectiles, velocities, angles, sprites, mut positions) = data;
 
@@ -212,47 +211,42 @@ impl<'a> System<'a> for ProjectileSystem {
       position.x += velocity.x * f32::cos(angle.radians);
       position.y += velocity.y * f32::sin(angle.radians);
 
-      if position.x < 0.0 {
-        lazy
-          .create_entity(&entities)
-          .with(Position {
-            x: position.x + 1.5,
-            y: position.y,
-          })
-          .with(Animation::with_rotation(90.0))
-          .build();
-      }
+      if position.x < 0.0 || position.x > SCREEN_WIDTH as f32 || position.y < 0.0 || position.y > SCREEN_HEIGHT as f32 {
+        let x = if position.x < 0.0 {
+          position.x + 1.5
+        } else if position.x > SCREEN_WIDTH as f32 {
+          position.x - 1.5
+        } else {
+          position.x
+        };
+        let y = if position.y < 0.0 {
+          position.y + 1.5
+        } else if position.y > SCREEN_HEIGHT as f32 {
+          position.y - 1.5
+        } else {
+          position.y
+        };
+        let rotation = if position.x < 0.0 || position.x > SCREEN_WIDTH as f32 {
+          90.0
+        } else {
+          0.0
+        };
 
-      if position.x > SCREEN_WIDTH as f32 {
         lazy
           .create_entity(&entities)
-          .with(Position {
-            x: position.x - 1.5,
-            y: position.y,
-          })
-          .with(Animation::with_rotation(90.0))
-          .build();
-      }
-
-      if position.y < 0.0 {
-        lazy
-          .create_entity(&entities)
-          .with(Position {
-            x: position.x,
-            y: position.y + 1.5,
-          })
-          .with(Animation::default())
-          .build();
-      }
-
-      if position.y > SCREEN_HEIGHT as f32 {
-        lazy
-          .create_entity(&entities)
-          .with(Position {
-            x: position.x,
-            y: position.y - 1.5,
-          })
-          .with(Animation::default())
+          .with(Position { x, y })
+          .with(Animation::new(vec![
+            Sprite {
+              texture_idx: 3,
+              region: Rect::new(0, 0, 6, 3),
+              rotation,
+            },
+            Sprite {
+              texture_idx: 3,
+              region: Rect::new(0, 3, 6, 3),
+              rotation,
+            },
+          ]))
           .build();
       }
 
@@ -272,19 +266,18 @@ impl<'a> System<'a> for ProjectileSystem {
                 .with(Projectile)
                 .with(Position {
                   x: p_pos.x
-                    + DISTANCE_MULTIPLIER * p_sprite.width as f32 * f32::cos(p_angle.radians)
+                    + DISTANCE_MULTIPLIER * p_sprite.region.width() as f32 * f32::cos(p_angle.radians)
                     + (i as f32 * PROJECTILE_WIDTH).abs() * f32::cos(p_angle.radians + i as f32 * PI / 2.0),
                   y: p_pos.y
-                    + DISTANCE_MULTIPLIER * p_sprite.height as f32 * f32::sin(p_angle.radians)
+                    + DISTANCE_MULTIPLIER * p_sprite.region.height() as f32 * f32::sin(p_angle.radians)
                     + (i as f32 * PROJECTILE_HEIGHT).abs() * f32::sin(p_angle.radians + i as f32 * PI / 2.0),
                 })
                 .with(*p_angle)
                 .with(Velocity { x: 3.5, y: 3.5 })
                 .with(Sprite {
-                  position: 2,
-                  width: PROJECTILE_WIDTH,
-                  height: PROJECTILE_HEIGHT,
-                  rotation: 0.0,
+                  texture_idx: 2,
+                  region: Rect::new(0, 0, 8, 8),
+                  rotation: (p_angle.radians * 180.0 / PI) as f64,
                 })
                 .build();
             }
@@ -293,16 +286,15 @@ impl<'a> System<'a> for ProjectileSystem {
               .create_entity(&entities)
               .with(Projectile)
               .with(Position {
-                x: p_pos.x + DISTANCE_MULTIPLIER * p_sprite.width as f32 * f32::cos(p_angle.radians),
-                y: p_pos.y + DISTANCE_MULTIPLIER * p_sprite.height as f32 * f32::sin(p_angle.radians),
+                x: p_pos.x + DISTANCE_MULTIPLIER * p_sprite.region.width() as f32 * f32::cos(p_angle.radians),
+                y: p_pos.y + DISTANCE_MULTIPLIER * p_sprite.region.height() as f32 * f32::sin(p_angle.radians),
               })
               .with(*p_angle)
               .with(Velocity { x: 3.5, y: 3.5 })
               .with(Sprite {
-                position: 2,
-                width: PROJECTILE_WIDTH,
-                height: PROJECTILE_HEIGHT,
-                rotation: 0.0,
+                texture_idx: 2,
+                region: Rect::new(0, 0, 8, 8),
+                rotation: (p_angle.radians * 180.0 / PI) as f64,
               })
               .build();
           }
@@ -326,21 +318,13 @@ impl<'a> System<'a> for ProjectileDeathSystem {
     for (e, animation) in (&entities, &mut animations).join() {
       animation.time += ticks.in_seconds();
 
-      if animation.current_frame.is_none() {
-        animation.position = 3;
-        animation.width = 6.0;
-        animation.height = 3.0;
-        animation.first_frame = Rect::new(0, 0, 6, 3);
-        animation.second_frame = Rect::new(0, 3, 6, 6);
-        animation.current_frame = Some(animation.first_frame);
+      if animation.time >= 0.25 {
+        entities.delete(e).unwrap();
+        continue;
       }
 
       if animation.time >= 0.1 {
-        animation.current_frame = Some(animation.second_frame);
-      }
-
-      if animation.time >= 0.25 {
-        entities.delete(e).unwrap();
+        animation.frame_idx = 1;
       }
     }
   }

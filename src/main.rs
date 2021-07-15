@@ -66,13 +66,13 @@ fn create_projectile_texture<'a, 'b>(
   canvas: &'b mut WindowCanvas,
 ) -> Result<Texture<'a>, String> {
   let mut texture = texture_creator
-    .create_texture_target(texture_creator.default_pixel_format(), 16, 16)
+    .create_texture_target(texture_creator.default_pixel_format(), 8, 8)
     .map_err(|e| e.to_string())?;
   canvas
     .with_texture_canvas(&mut texture, |texture_canvas| {
       texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
       texture_canvas.clear();
-      texture_canvas.circle(8, 8, 7, Color::WHITE).unwrap();
+      texture_canvas.circle(4, 4, 3, Color::WHITE).unwrap();
     })
     .map_err(|e| e.to_string())?;
   texture.set_blend_mode(BlendMode::Blend);
@@ -158,9 +158,8 @@ fn main() -> Result<(), String> {
     .with(Angle::default())
     .with(Velocity::default())
     .with(Sprite {
-      position: 0,
-      width: 32.0,
-      height: 32.0,
+      texture_idx: 0,
+      region: Rect::new(0, 0, 32, 32),
       rotation: 0.0,
     })
     .build();
@@ -172,9 +171,8 @@ fn main() -> Result<(), String> {
       y: SCREEN_HEIGHT as f32 / 2.0,
     })
     .with(Sprite {
-      position: 1,
-      width: 0.0,
-      height: 0.0,
+      texture_idx: 1,
+      region: Rect::new(0, 0, 0, 0),
       rotation: 45.0,
     })
     .with(Interpolation::new(8.0, 0.0, 0.2, ease_in_out_cubic))

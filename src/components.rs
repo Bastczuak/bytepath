@@ -85,9 +85,8 @@ impl Interpolation {
 #[derive(Component)]
 #[storage(DenseVecStorage)]
 pub struct Sprite {
-  pub position: usize,
-  pub width: f32,
-  pub height: f32,
+  pub texture_idx: usize,
+  pub region: Rect,
   pub rotation: f64,
 }
 
@@ -95,41 +94,20 @@ pub struct Sprite {
 #[storage(DenseVecStorage)]
 pub struct Animation {
   pub time: f32,
-  pub position: usize,
-  pub width: f32,
-  pub height: f32,
-  pub rotation: f64,
-  pub current_frame: Option<Rect>,
-  pub first_frame: Rect,
-  pub second_frame: Rect,
+  pub frame_idx: usize,
+  pub frames: Vec<Sprite>,
 }
 
 impl Animation {
-  pub fn with_rotation(rotation: f64) -> Self {
-    Animation {
+  pub fn new(frames: Vec<Sprite>) -> Self {
+    Self {
       time: 0.0,
-      position: 0,
-      width: 0.0,
-      height: 0.0,
-      rotation,
-      current_frame: None,
-      first_frame: Rect::new(0, 0, 0, 0),
-      second_frame: Rect::new(0, 0, 0, 0),
+      frame_idx: 0,
+      frames,
     }
   }
-}
 
-impl Default for Animation {
-  fn default() -> Self {
-    Animation {
-      time: 0.0,
-      position: 0,
-      width: 0.0,
-      height: 0.0,
-      rotation: 0.0,
-      current_frame: None,
-      first_frame: Rect::new(0, 0, 0, 0),
-      second_frame: Rect::new(0, 0, 0, 0),
-    }
+  pub fn current_frame(&self) -> Option<&Sprite> {
+    self.frames.get(self.frame_idx)
   }
 }
