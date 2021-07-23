@@ -1,5 +1,6 @@
-use crate::components::{Animation, Position, Sprite};
+use crate::components::{Animation, LineParticle, Position, Sprite};
 use crate::resources::Shake;
+use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{Texture, WindowCanvas};
@@ -10,6 +11,7 @@ pub type RenderSystemData<'a> = (
   ReadStorage<'a, Position>,
   ReadStorage<'a, Sprite>,
   ReadStorage<'a, Animation>,
+  ReadStorage<'a, LineParticle>,
 );
 
 pub fn render(
@@ -18,7 +20,7 @@ pub fn render(
   textures: &[Texture],
   data: RenderSystemData,
 ) -> Result<(), String> {
-  let (shake, positions, sprites, animations) = data;
+  let (shake, positions, sprites, animations, line_particles) = data;
   canvas.set_draw_color(background);
   canvas.clear();
 
@@ -50,6 +52,17 @@ pub fn render(
         false,
       )?;
     }
+  }
+
+  for particle in (&line_particles).join() {
+    canvas.thick_line(
+      particle.x1 as i16,
+      particle.y1 as i16,
+      particle.x2 as i16,
+      particle.y2 as i16,
+      particle.width,
+      particle.color,
+    )?;
   }
 
   canvas.present();

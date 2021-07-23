@@ -7,3 +7,7 @@ pub fn ease_in_out_cubic(x: f32) -> f32 {
     1.0 - f32::powf(-2.0 * x + 2.0, 3.0) / 2.0
   }
 }
+
+pub fn ease_out_sine(x: f32) -> f32 {
+  f32::sin((x * std::f32::consts::PI) / 2.0)
+}

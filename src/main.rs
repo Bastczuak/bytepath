@@ -5,9 +5,11 @@ mod resources;
 mod systems;
 
 use crate::components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity};
-use crate::easings::ease_in_out_cubic;
+use crate::easings::{ease_in_out_cubic, ease_out_sine};
 use crate::resources::DeltaTick;
-use crate::systems::{PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem};
+use crate::systems::{
+  PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem,
+};
 use sdl2::event::Event;
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::keyboard::Keycode;
@@ -143,6 +145,7 @@ fn main() -> Result<(), String> {
     .with(ShootingSystem, "shooting_system", &["player_system"])
     .with(ProjectileSystem::default(), "projectile_system", &["player_system"])
     .with(ProjectileDeathSystem, "projectile_death_system", &["projectile_system"])
+    .with(PlayerDeathSystem, "player_death_system", &["player_system"])
     .build();
   let mut world = World::new();
   dispatcher.setup(&mut world);

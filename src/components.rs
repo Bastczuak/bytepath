@@ -1,4 +1,5 @@
 use crate::easings::EasingFunction;
+use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use specs::{prelude::*, Component};
 
@@ -120,4 +121,17 @@ impl Animation {
   pub fn current_frame(&self) -> Option<&Sprite> {
     self.frames.get(self.frame_idx)
   }
+}
+
+#[derive(Component)]
+#[storage(DenseVecStorage)]
+pub struct LineParticle {
+  pub color: Color,
+  pub width: u8,
+  pub length: f32,
+  pub x1: f32,
+  pub y1: f32,
+  pub x2: f32,
+  pub y2: f32,
+  pub time_to_live: f32,
 }

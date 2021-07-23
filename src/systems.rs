@@ -1,10 +1,11 @@
 use crate::components::{
-  Angle, Animation, Interpolation, Player, Position, Projectile, ShootingEffect, Sprite, Velocity,
+  Angle, Animation, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect, Sprite, Velocity,
 };
 use crate::resources::{DeltaTick, Shake};
 use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use rand::Rng;
 use sdl2::keyboard::Keycode;
+use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use specs::prelude::*;
 use std::collections::HashSet;
@@ -325,6 +326,68 @@ impl<'a> System<'a> for ProjectileDeathSystem {
 
       if animation.time >= 0.1 {
         animation.frame_idx = 1;
+      }
+    }
+  }
+}
+
+pub struct PlayerDeathSystem;
+
+impl<'a> System<'a> for PlayerDeathSystem {
+  type SystemData = (
+    Entities<'a>,
+    Read<'a, LazyUpdate>,
+    Read<'a, HashSet<Keycode>>,
+    Read<'a, DeltaTick>,
+    ReadStorage<'a, Angle>,
+    WriteStorage<'a, Velocity>,
+    WriteStorage<'a, LineParticle>,
+    WriteStorage<'a, Interpolation>,
+  );
+
+  fn run(&mut self, data: Self::SystemData) {
+    let (entities, lazy, keys, ticks, angels, mut velocities, mut particles, mut interpolations) = data;
+    for (e, angle, velocity, particle, interpolation) in
+      (&entities, &angels, &mut velocities, &mut particles, &mut interpolations).join()
+    {
+      particle.time_to_live -= ticks.in_seconds();
+      if particle.time_to_live < 0.0 {
+        entities.delete(e).unwrap();
+        continue;
+      }
+
+      particle.x1 += velocity.x * f32::cos(angle.radians) * ticks.in_seconds();
+      particle.y1 += velocity.y * f32::sin(angle.radians) * ticks.in_seconds();
+      particle.x2 = particle.x1 + particle.length * f32::cos(angle.radians);
+      particle.y2 = particle.y1 + particle.length * f32::sin(angle.radians);
+
+      let new_velocity = interpolation.eval(ticks.in_seconds());
+      velocity.x = new_velocity;
+      velocity.y = new_velocity;
+    }
+
+    if keys.contains(&Keycode::F7) {
+      let mut rng = rand::thread_rng();
+      for _ in 0..12 {
+        lazy
+          .create_entity(&entities)
+          .with(Angle {
+            radians: rng.gen_range(0.0..2.0 * PI),
+            velocity: 0.0,
+          })
+          .with(Velocity { x: 75.0, y: 75.0 })
+          .with(Interpolation::new(75.0, 0.0, 1.5, crate::ease_out_sine))
+          .with(LineParticle {
+            width: 2,
+            color: Color::WHITE,
+            length: rng.gen_range(2.0..3.0),
+            x1: SCREEN_WIDTH as f32 / 2.0,
+            y1: SCREEN_HEIGHT as f32 / 2.0,
+            x2: SCREEN_WIDTH as f32 / 2.0 + 3.0 * f32::cos(PI / 4.0),
+            y2: SCREEN_HEIGHT as f32 / 2.0 + 3.0 * f32::sin(PI / 4.0),
+            time_to_live: 1.5,
+          })
+          .build();
       }
     }
   }
