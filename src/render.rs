@@ -1,9 +1,13 @@
-use crate::components::{Animation, LineParticle, Position, Sprite};
-use crate::resources::Shake;
-use sdl2::gfx::primitives::DrawRenderer;
-use sdl2::pixels::Color;
-use sdl2::rect::{Point, Rect};
-use sdl2::render::{Texture, WindowCanvas};
+use crate::{
+  components::{Animation, LineParticle, Position, Sprite},
+  resources::Shake,
+};
+use sdl2::{
+  gfx::primitives::DrawRenderer,
+  pixels::Color,
+  rect::{Point, Rect},
+  render::{Texture, WindowCanvas},
+};
 use specs::prelude::*;
 
 pub type RenderSystemData<'a> = (

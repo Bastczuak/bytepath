@@ -4,22 +4,23 @@ mod render;
 mod resources;
 mod systems;
 
-use crate::components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity};
-use crate::easings::{ease_in_out_cubic, ease_out_sine};
-use crate::resources::DeltaTick;
-use crate::systems::{
-  PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem,
+use crate::{
+  components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity},
+  easings::{ease_in_out_cubic, ease_out_sine},
+  resources::DeltaTick,
+  systems::{PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem},
 };
-use sdl2::event::Event;
-use sdl2::gfx::primitives::DrawRenderer;
-use sdl2::keyboard::Keycode;
-use sdl2::pixels::Color;
-use sdl2::rect::Rect;
-use sdl2::render::{BlendMode, Texture, TextureCreator, WindowCanvas};
-use sdl2::video::WindowContext;
+use sdl2::{
+  event::Event,
+  gfx::primitives::DrawRenderer,
+  keyboard::Keycode,
+  pixels::Color,
+  rect::Rect,
+  render::{BlendMode, Texture, TextureCreator, WindowCanvas},
+  video::WindowContext,
+};
 use specs::prelude::*;
-use std::collections::HashSet;
-use std::time::Duration;
+use std::{collections::HashSet, time::Duration};
 
 pub const SCREEN_WIDTH: u32 = 480;
 pub const SCREEN_HEIGHT: u32 = 280;

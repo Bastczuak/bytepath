@@ -1,6 +1,5 @@
 use crate::easings::EasingFunction;
-use sdl2::pixels::Color;
-use sdl2::rect::Rect;
+use sdl2::{pixels::Color, rect::Rect};
 use specs::{prelude::*, Component};
 
 #[derive(Component, Default)]

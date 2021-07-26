@@ -1,15 +1,14 @@
-use crate::components::{
-  Angle, Animation, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect, Sprite, Velocity,
+use crate::{
+  components::{
+    Angle, Animation, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect, Sprite, Velocity,
+  },
+  resources::{DeltaTick, Shake},
+  SCREEN_HEIGHT, SCREEN_WIDTH,
 };
-use crate::resources::{DeltaTick, Shake};
-use crate::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use rand::Rng;
-use sdl2::keyboard::Keycode;
-use sdl2::pixels::Color;
-use sdl2::rect::Rect;
+use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
 use specs::prelude::*;
-use std::collections::HashSet;
-use std::f32::consts::PI;
+use std::{collections::HashSet, f32::consts::PI};
 
 pub struct ShakeSystem {
   duration: f32,
