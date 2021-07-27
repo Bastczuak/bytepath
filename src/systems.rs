@@ -2,14 +2,16 @@ use crate::{
   components::{
     Angle, Animation, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect, Sprite, Velocity,
   },
-  resources::{DeltaTick, Shake},
+  easings::ease_out_sine,
+  resources::{DeltaTick, GameEvents, GameEventsChannel, Shake},
   SCREEN_HEIGHT, SCREEN_WIDTH,
 };
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
 use specs::prelude::*;
 use std::{collections::HashSet, f32::consts::PI};
 
+#[derive(Default)]
 pub struct ShakeSystem {
   duration: f32,
   frequency: f32,
@@ -17,26 +19,6 @@ pub struct ShakeSystem {
   samples_y: Vec<f32>,
   time: f32,
   is_shaking: bool,
-}
-
-impl Default for ShakeSystem {
-  fn default() -> Self {
-    let duration = 1000.0;
-    let frequency = 40.0;
-    let sample_count = ((duration / 1000.0) * frequency) as usize;
-    let mut rng = rand::thread_rng();
-    let samples_x = (0..sample_count).map(|_| rng.gen_range(0.0..1.0) * 2.0 - 1.0).collect();
-    let samples_y = (0..sample_count).map(|_| rng.gen_range(0.0..1.0) * 2.0 - 1.0).collect();
-
-    ShakeSystem {
-      duration,
-      frequency,
-      samples_x,
-      samples_y,
-      time: 0.0,
-      is_shaking: false,
-    }
-  }
 }
 
 impl<'a> System<'a> for ShakeSystem {
@@ -67,11 +49,7 @@ impl<'a> System<'a> for ShakeSystem {
       fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
         move |n| {
           let n = n as usize;
-          if n >= samples.len() {
-            0.0
-          } else {
-            samples[n]
-          }
+          if n >= samples.len() { 0.0 } else { samples[n] }
         }
       }
       let noise_x = noise(&self.samples_x);
@@ -84,6 +62,16 @@ impl<'a> System<'a> for ShakeSystem {
       shake.y = amplitude(&noise_y);
     }
   }
+
+  fn setup(&mut self, world: &mut World) {
+    Self::SystemData::setup(world);
+    self.duration = 1000.0;
+    self.frequency = 40.0;
+    let sample_count = ((self.duration / 1000.0) * self.frequency) as usize;
+    let mut rng = rand::rngs::SmallRng::from_entropy();
+    self.samples_x = (0..sample_count).map(|_| rng.gen_range(0.0..1.0) * 2.0 - 1.0).collect();
+    self.samples_y = (0..sample_count).map(|_| rng.gen_range(0.0..1.0) * 2.0 - 1.0).collect();
+  }
 }
 
 pub struct PlayerSystem;
@@ -93,6 +81,7 @@ impl<'a> System<'a> for PlayerSystem {
     Entities<'a>,
     Read<'a, HashSet<Keycode>>,
     Read<'a, DeltaTick>,
+    Write<'a, GameEventsChannel>,
     ReadStorage<'a, Player>,
     ReadStorage<'a, Velocity>,
     ReadStorage<'a, Sprite>,
@@ -101,7 +90,7 @@ impl<'a> System<'a> for PlayerSystem {
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, keycodes, ticks, players, velocities, sprites, mut positions, mut angles) = data;
+    let (entities, keycodes, ticks, mut events, players, velocities, sprites, mut positions, mut angles) = data;
 
     for (_, e, velocity, sprite, position, angle) in
       (&players, &entities, &velocities, &sprites, &mut positions, &mut angles).join()
@@ -125,6 +114,7 @@ impl<'a> System<'a> for PlayerSystem {
         || (position.y + sprite_offset_y) > SCREEN_HEIGHT as f32
       {
         entities.delete(e).unwrap();
+        events.single_write(GameEvents::PlayerDeath(*position));
       }
     }
   }
@@ -174,16 +164,9 @@ impl<'a> System<'a> for ShootingSystem {
   }
 }
 
+#[derive(Default)]
 pub struct ProjectileSystem {
   spawn_time_s: Option<f32>,
-}
-
-impl Default for ProjectileSystem {
-  fn default() -> Self {
-    ProjectileSystem {
-      spawn_time_s: Some(0.25),
-    }
-  }
 }
 
 impl<'a> System<'a> for ProjectileSystem {
@@ -305,6 +288,11 @@ impl<'a> System<'a> for ProjectileSystem {
       }
     }
   }
+
+  fn setup(&mut self, world: &mut World) {
+    Self::SystemData::setup(world);
+    self.spawn_time_s = Some(0.25);
+  }
 }
 
 pub struct ProjectileDeathSystem;
@@ -330,14 +318,18 @@ impl<'a> System<'a> for ProjectileDeathSystem {
   }
 }
 
-pub struct PlayerDeathSystem;
+#[derive(Default)]
+pub struct PlayerDeathSystem {
+  reader_id: Option<ReaderId<GameEvents>>,
+  rng: Option<rand::rngs::SmallRng>,
+}
 
 impl<'a> System<'a> for PlayerDeathSystem {
   type SystemData = (
     Entities<'a>,
     Read<'a, LazyUpdate>,
-    Read<'a, HashSet<Keycode>>,
     Read<'a, DeltaTick>,
+    Write<'a, GameEventsChannel>,
     ReadStorage<'a, Angle>,
     WriteStorage<'a, Velocity>,
     WriteStorage<'a, LineParticle>,
@@ -345,7 +337,8 @@ impl<'a> System<'a> for PlayerDeathSystem {
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, keys, ticks, angels, mut velocities, mut particles, mut interpolations) = data;
+    let (entities, lazy, ticks, events, angels, mut velocities, mut particles, mut interpolations) = data;
+
     for (e, angle, velocity, particle, interpolation) in
       (&entities, &angels, &mut velocities, &mut particles, &mut interpolations).join()
     {
@@ -365,29 +358,54 @@ impl<'a> System<'a> for PlayerDeathSystem {
       velocity.y = new_velocity;
     }
 
-    if keys.contains(&Keycode::F7) {
-      let mut rng = rand::thread_rng();
-      for _ in 0..12 {
-        lazy
-          .create_entity(&entities)
-          .with(Angle {
-            radians: rng.gen_range(0.0..2.0 * PI),
-            velocity: 0.0,
-          })
-          .with(Velocity { x: 75.0, y: 75.0 })
-          .with(Interpolation::new(75.0, 0.0, 1.5, crate::ease_out_sine))
-          .with(LineParticle {
-            width: 2,
-            color: Color::WHITE,
-            length: rng.gen_range(2.0..3.0),
-            x1: SCREEN_WIDTH as f32 / 2.0,
-            y1: SCREEN_HEIGHT as f32 / 2.0,
-            x2: SCREEN_WIDTH as f32 / 2.0 + 3.0 * f32::cos(PI / 4.0),
-            y2: SCREEN_HEIGHT as f32 / 2.0 + 3.0 * f32::sin(PI / 4.0),
-            time_to_live: 1.5,
-          })
-          .build();
+    for event in events.read(
+      self
+        .reader_id
+        .as_mut()
+        .expect("reader_id Should not be None! Did you forget to initialize in setup()?"),
+    ) {
+      match event {
+        GameEvents::PlayerDeath(pos) => {
+          let rng = self
+            .rng
+            .as_mut()
+            .expect("rng Should not be None! Did you forget to initialize in setup()?");
+          for _ in 0..12 {
+            lazy
+              .create_entity(&entities)
+              .with(Angle {
+                radians: rng.gen_range(0.0..2.0 * PI),
+                velocity: 0.0,
+              })
+              .with(Velocity { x: 75.0, y: 75.0 })
+              .with(Interpolation::new(75.0, 0.0, 1.5, ease_out_sine))
+              .with(LineParticle {
+                width: 2,
+                color: Color::WHITE,
+                length: rng.gen_range(2.0..3.0),
+                x1: pos.x,
+                y1: pos.y,
+                x2: pos.x + 3.0 * f32::cos(PI / 4.0),
+                y2: pos.y + 3.0 * f32::sin(PI / 4.0),
+                time_to_live: 1.5,
+              })
+              .build();
+          }
+        }
       }
     }
+  }
+
+  fn setup(&mut self, world: &mut World) {
+    Self::SystemData::setup(world);
+    self.reader_id = Some(Write::<GameEventsChannel>::fetch(&world).register_reader());
+    self.rng = Some(rand::rngs::SmallRng::from_entropy());
+  }
+
+  fn dispose(self, _: &mut World)
+  where
+    Self: Sized,
+  {
+    drop(self.reader_id);
   }
 }

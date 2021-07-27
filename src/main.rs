@@ -6,7 +6,7 @@ mod systems;
 
 use crate::{
   components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity},
-  easings::{ease_in_out_cubic, ease_out_sine},
+  easings::ease_in_out_cubic,
   resources::DeltaTick,
   systems::{PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem},
 };
@@ -146,7 +146,7 @@ fn main() -> Result<(), String> {
     .with(ShootingSystem, "shooting_system", &["player_system"])
     .with(ProjectileSystem::default(), "projectile_system", &["player_system"])
     .with(ProjectileDeathSystem, "projectile_death_system", &["projectile_system"])
-    .with(PlayerDeathSystem, "player_death_system", &["player_system"])
+    .with(PlayerDeathSystem::default(), "player_death_system", &["player_system"])
     .build();
   let mut world = World::new();
   dispatcher.setup(&mut world);

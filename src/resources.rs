@@ -1,3 +1,6 @@
+use crate::components::Position;
+use specs::shrev::EventChannel;
+
 #[derive(Default)]
 pub struct DeltaTick(pub u32);
 
@@ -6,6 +9,12 @@ impl DeltaTick {
     self.0 as f32 / 1000.0
   }
 }
+
+pub enum GameEvents {
+  PlayerDeath(Position),
+}
+
+pub type GameEventsChannel = EventChannel<GameEvents>;
 
 #[derive(Default)]
 pub struct Shake {

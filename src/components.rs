@@ -14,7 +14,7 @@ pub struct ShootingEffect;
 #[storage(NullStorage)]
 pub struct Projectile;
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Copy, Clone)]
 #[storage(DenseVecStorage)]
 pub struct Position {
   pub x: f32,
