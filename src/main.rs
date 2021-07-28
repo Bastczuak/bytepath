@@ -179,7 +179,7 @@ fn main() -> Result<(), String> {
       region: Rect::new(0, 0, 0, 0),
       rotation: 45.0,
     })
-    .with(Interpolation::new(8.0, 0.0, 0.2, ease_in_out_cubic))
+    .with(Interpolation::new(0.2, ease_in_out_cubic))
     .build();
 
   let sdl_timer = sdl_context.timer()?;

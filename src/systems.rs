@@ -158,7 +158,7 @@ impl<'a> System<'a> for ShootingSystem {
       position.x = x;
       position.y = y;
       sprite.rotation = rotation as f64;
-      let value = interpolation.eval(ticks.in_seconds());
+      let value = interpolation.eval(8.0, 0.0, ticks.in_seconds());
       sprite.region = Rect::new(0, 0, value as u32, value as u32);
     }
   }
@@ -322,6 +322,7 @@ impl<'a> System<'a> for ProjectileDeathSystem {
 pub struct PlayerDeathSystem {
   reader_id: Option<ReaderId<GameEvents>>,
   rng: Option<rand::rngs::SmallRng>,
+  time_to_live: Option<f32>,
 }
 
 impl<'a> System<'a> for PlayerDeathSystem {
@@ -339,21 +340,26 @@ impl<'a> System<'a> for PlayerDeathSystem {
   fn run(&mut self, data: Self::SystemData) {
     let (entities, lazy, ticks, events, angels, mut velocities, mut particles, mut interpolations) = data;
 
-    for (e, angle, velocity, particle, interpolation) in
-      (&entities, &angels, &mut velocities, &mut particles, &mut interpolations).join()
-    {
-      particle.time_to_live -= ticks.in_seconds();
-      if particle.time_to_live < 0.0 {
-        entities.delete(e).unwrap();
-        continue;
+    if let Some(mut time_to_live) = self.time_to_live.take() {
+      time_to_live -= ticks.in_seconds();
+      if time_to_live < 0.0 {
+        for (e, _) in (&entities, &particles).join() {
+          entities.delete(e).unwrap();
+        }
+      } else {
+        self.time_to_live = Some(time_to_live);
       }
+    }
 
+    for (angle, velocity, particle, interpolation) in
+      (&angels, &mut velocities, &mut particles, &mut interpolations).join()
+    {
       particle.x1 += velocity.x * f32::cos(angle.radians) * ticks.in_seconds();
       particle.y1 += velocity.y * f32::sin(angle.radians) * ticks.in_seconds();
       particle.x2 = particle.x1 + particle.length * f32::cos(angle.radians);
       particle.y2 = particle.y1 + particle.length * f32::sin(angle.radians);
 
-      let new_velocity = interpolation.eval(ticks.in_seconds());
+      let new_velocity = interpolation.eval(75.0, 0.0, ticks.in_seconds());
       velocity.x = new_velocity;
       velocity.y = new_velocity;
     }
@@ -366,6 +372,7 @@ impl<'a> System<'a> for PlayerDeathSystem {
     ) {
       match event {
         GameEvents::PlayerDeath(pos) => {
+          self.time_to_live = Some(1.5);
           let rng = self
             .rng
             .as_mut()
@@ -378,7 +385,7 @@ impl<'a> System<'a> for PlayerDeathSystem {
                 velocity: 0.0,
               })
               .with(Velocity { x: 75.0, y: 75.0 })
-              .with(Interpolation::new(75.0, 0.0, 1.5, ease_out_sine))
+              .with(Interpolation::new(1.5, ease_out_sine))
               .with(LineParticle {
                 width: 2,
                 color: Color::WHITE,
@@ -387,7 +394,6 @@ impl<'a> System<'a> for PlayerDeathSystem {
                 y1: pos.y,
                 x2: pos.x + 3.0 * f32::cos(PI / 4.0),
                 y2: pos.y + 3.0 * f32::sin(PI / 4.0),
-                time_to_live: 1.5,
               })
               .build();
           }

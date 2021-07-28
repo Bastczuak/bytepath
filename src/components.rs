@@ -56,29 +56,25 @@ pub struct Interpolation {
   time: f32,
   duration: f32,
   easing_fn: EasingFunction,
-  v0: f32,
-  v1: f32,
 }
 
 impl Interpolation {
-  pub fn new(v0: f32, v1: f32, duration: f32, easing_fn: EasingFunction) -> Self {
+  pub fn new(duration: f32, easing_fn: EasingFunction) -> Self {
     Interpolation {
       time: 0.0,
       duration,
       easing_fn,
-      v0,
-      v1,
     }
   }
 
-  pub fn eval(&mut self, t: f32) -> f32 {
+  pub fn eval(&mut self, v0: f32, v1: f32, t: f32) -> f32 {
     self.time += t;
     if self.time >= self.duration {
       self.time = 0.0;
-      return self.v0;
+      return v0;
     }
     let easing = (self.easing_fn)(self.time / self.duration);
-    (1.0 - easing) * self.v0 + easing * self.v1
+    (1.0 - easing) * v0 + easing * v1
   }
 }
 
@@ -132,5 +128,4 @@ pub struct LineParticle {
   pub y1: f32,
   pub x2: f32,
   pub y2: f32,
-  pub time_to_live: f32,
 }
