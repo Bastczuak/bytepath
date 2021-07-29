@@ -12,6 +12,7 @@ impl DeltaTick {
 
 pub enum GameEvents {
   PlayerDeath(Position),
+  PlayerSpawn,
 }
 
 pub type GameEventsChannel = EventChannel<GameEvents>;

@@ -6,7 +6,6 @@ mod systems;
 
 use crate::{
   components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity},
-  easings::ease_in_out_cubic,
   resources::DeltaTick,
   systems::{PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem},
 };
@@ -143,7 +142,7 @@ fn main() -> Result<(), String> {
   let mut dispatcher = DispatcherBuilder::new()
     .with(ShakeSystem::default(), "shake_system", &[])
     .with(PlayerSystem, "player_system", &[])
-    .with(ShootingSystem, "shooting_system", &["player_system"])
+    .with(ShootingSystem::default(), "shooting_system", &["player_system"])
     .with(ProjectileSystem::default(), "projectile_system", &["player_system"])
     .with(ProjectileDeathSystem, "projectile_death_system", &["projectile_system"])
     .with(PlayerDeathSystem::default(), "player_death_system", &["player_system"])
@@ -179,7 +178,7 @@ fn main() -> Result<(), String> {
       region: Rect::new(0, 0, 0, 0),
       rotation: 45.0,
     })
-    .with(Interpolation::new(0.2, ease_in_out_cubic))
+    .with(Interpolation::new(vec![(8.0, 0.0)], 0.2))
     .build();
 
   let sdl_timer = sdl_context.timer()?;
