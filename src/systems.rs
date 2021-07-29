@@ -2,7 +2,7 @@ use crate::{
   components::{
     Angle, Animation, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect, Sprite, Velocity,
   },
-  easings::ease_out_sine,
+  easings::{ease_in_out_cubic, linear},
   resources::{DeltaTick, GameEvents, GameEventsChannel, Shake},
   SCREEN_HEIGHT, SCREEN_WIDTH,
 };
@@ -77,6 +77,7 @@ impl<'a> System<'a> for ShakeSystem {
 pub struct PlayerSystem;
 
 impl<'a> System<'a> for PlayerSystem {
+  #[allow(clippy::type_complexity)]
   type SystemData = (
     Entities<'a>,
     Read<'a, HashSet<Keycode>>,
@@ -122,6 +123,7 @@ impl<'a> System<'a> for PlayerSystem {
 pub struct ShootingSystem;
 
 impl<'a> System<'a> for ShootingSystem {
+  #[allow(clippy::type_complexity)]
   type SystemData = (
     Entities<'a>,
     Read<'a, DeltaTick>,
@@ -158,7 +160,7 @@ impl<'a> System<'a> for ShootingSystem {
       position.x = x;
       position.y = y;
       sprite.rotation = rotation as f64;
-      let value = interpolation.eval(8.0, 0.0, ticks.in_seconds());
+      let value = interpolation.eval(ticks.in_seconds(), ease_in_out_cubic)[0];
       sprite.region = Rect::new(0, 0, value as u32, value as u32);
     }
   }
@@ -170,6 +172,7 @@ pub struct ProjectileSystem {
 }
 
 impl<'a> System<'a> for ProjectileSystem {
+  #[allow(clippy::type_complexity)]
   type SystemData = (
     Entities<'a>,
     Read<'a, LazyUpdate>,
@@ -322,10 +325,10 @@ impl<'a> System<'a> for ProjectileDeathSystem {
 pub struct PlayerDeathSystem {
   reader_id: Option<ReaderId<GameEvents>>,
   rng: Option<rand::rngs::SmallRng>,
-  time_to_live: Option<f32>,
 }
 
 impl<'a> System<'a> for PlayerDeathSystem {
+  #[allow(clippy::type_complexity)]
   type SystemData = (
     Entities<'a>,
     Read<'a, LazyUpdate>,
@@ -340,28 +343,25 @@ impl<'a> System<'a> for PlayerDeathSystem {
   fn run(&mut self, data: Self::SystemData) {
     let (entities, lazy, ticks, events, angels, mut velocities, mut particles, mut interpolations) = data;
 
-    if let Some(mut time_to_live) = self.time_to_live.take() {
-      time_to_live -= ticks.in_seconds();
-      if time_to_live < 0.0 {
-        for (e, _) in (&entities, &particles).join() {
-          entities.delete(e).unwrap();
-        }
-      } else {
-        self.time_to_live = Some(time_to_live);
-      }
-    }
-
-    for (angle, velocity, particle, interpolation) in
-      (&angels, &mut velocities, &mut particles, &mut interpolations).join()
+    for (e, angle, velocity, particle, interpolation) in
+      (&entities, &angels, &mut velocities, &mut particles, &mut interpolations).join()
     {
+      particle.time_to_live -= ticks.in_seconds();
+      if particle.time_to_live < 0.0 {
+        entities.delete(e).unwrap();
+        continue;
+      }
+
       particle.x1 += velocity.x * f32::cos(angle.radians) * ticks.in_seconds();
       particle.y1 += velocity.y * f32::sin(angle.radians) * ticks.in_seconds();
       particle.x2 = particle.x1 + particle.length * f32::cos(angle.radians);
       particle.y2 = particle.y1 + particle.length * f32::sin(angle.radians);
 
-      let new_velocity = interpolation.eval(75.0, 0.0, ticks.in_seconds());
-      velocity.x = new_velocity;
-      velocity.y = new_velocity;
+      let new = interpolation.eval(ticks.in_seconds(), linear);
+      velocity.x = new[0];
+      velocity.y = new[0];
+      particle.length = new[1];
+      particle.width = new[2];
     }
 
     for event in events.read(
@@ -372,28 +372,35 @@ impl<'a> System<'a> for PlayerDeathSystem {
     ) {
       match event {
         GameEvents::PlayerDeath(pos) => {
-          self.time_to_live = Some(1.5);
           let rng = self
             .rng
             .as_mut()
             .expect("rng Should not be None! Did you forget to initialize in setup()?");
-          for _ in 0..12 {
+          for _ in 0..24 {
+            let length = rng.gen_range(2.0..10.0);
+            let time_to_live = rng.gen_range(0.3..0.5);
+            let velocity = rng.gen_range(75.0..150.0);
+            let radians = rng.gen_range(0.0..2.0 * PI);
             lazy
               .create_entity(&entities)
-              .with(Angle {
-                radians: rng.gen_range(0.0..2.0 * PI),
-                velocity: 0.0,
+              .with(Angle { radians, velocity: 0.0 })
+              .with(Velocity {
+                x: velocity,
+                y: velocity,
               })
-              .with(Velocity { x: 75.0, y: 75.0 })
-              .with(Interpolation::new(1.5, ease_out_sine))
+              .with(Interpolation::new(
+                vec![(velocity, 0.0), (length, 0.0), (4.0, 1.0)],
+                time_to_live,
+              ))
               .with(LineParticle {
-                width: 2,
+                width: 4.0,
                 color: Color::WHITE,
-                length: rng.gen_range(2.0..3.0),
+                length,
                 x1: pos.x,
                 y1: pos.y,
-                x2: pos.x + 3.0 * f32::cos(PI / 4.0),
-                y2: pos.y + 3.0 * f32::sin(PI / 4.0),
+                x2: pos.x + length * f32::cos(radians),
+                y2: pos.y + length * f32::sin(radians),
+                time_to_live,
               })
               .build();
           }

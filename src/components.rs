@@ -55,26 +55,31 @@ impl Default for Velocity {
 pub struct Interpolation {
   time: f32,
   duration: f32,
-  easing_fn: EasingFunction,
+  begin_end: Vec<(f32, f32)>,
 }
 
 impl Interpolation {
-  pub fn new(duration: f32, easing_fn: EasingFunction) -> Self {
+  pub fn new(begin_end: Vec<(f32, f32)>, duration: f32) -> Self {
     Interpolation {
       time: 0.0,
       duration,
-      easing_fn,
+      begin_end,
     }
   }
 
-  pub fn eval(&mut self, v0: f32, v1: f32, t: f32) -> f32 {
+  pub fn eval(&mut self, t: f32, easing_fn: EasingFunction) -> Vec<f32> {
     self.time += t;
     if self.time >= self.duration {
       self.time = 0.0;
-      return v0;
     }
-    let easing = (self.easing_fn)(self.time / self.duration);
-    (1.0 - easing) * v0 + easing * v1
+    self
+      .begin_end
+      .iter()
+      .map(|&(begin, end)| {
+        let easing = (easing_fn)(self.time / self.duration);
+        (1.0 - easing) * begin + easing * end
+      })
+      .collect()
   }
 }
 
@@ -122,10 +127,11 @@ impl Animation {
 #[storage(DenseVecStorage)]
 pub struct LineParticle {
   pub color: Color,
-  pub width: u8,
+  pub width: f32,
   pub length: f32,
   pub x1: f32,
   pub y1: f32,
   pub x2: f32,
   pub y2: f32,
+  pub time_to_live: f32,
 }

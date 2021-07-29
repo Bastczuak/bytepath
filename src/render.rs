@@ -64,7 +64,7 @@ pub fn render(
       particle.y1 as i16,
       particle.x2 as i16,
       particle.y2 as i16,
-      particle.width,
+      particle.width as u8,
       particle.color,
     )?;
   }

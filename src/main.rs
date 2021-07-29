@@ -6,7 +6,6 @@ mod systems;
 
 use crate::{
   components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity},
-  easings::ease_in_out_cubic,
   resources::DeltaTick,
   systems::{PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem},
 };
@@ -179,7 +178,7 @@ fn main() -> Result<(), String> {
       region: Rect::new(0, 0, 0, 0),
       rotation: 45.0,
     })
-    .with(Interpolation::new(0.2, ease_in_out_cubic))
+    .with(Interpolation::new(vec![(8.0, 0.0)], 0.2))
     .build();
 
   let sdl_timer = sdl_context.timer()?;
