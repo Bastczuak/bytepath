@@ -1,6 +1,6 @@
 use crate::{
   components::{Animation, LineParticle, Position, Sprite},
-  resources::Shake,
+  resources::{Flash, Shake},
 };
 use sdl2::{
   gfx::primitives::DrawRenderer,
@@ -12,6 +12,7 @@ use specs::prelude::*;
 
 pub type RenderSystemData<'a> = (
   Read<'a, Shake>,
+  Read<'a, Flash>,
   ReadStorage<'a, Position>,
   ReadStorage<'a, Sprite>,
   ReadStorage<'a, Animation>,
@@ -24,7 +25,15 @@ pub fn render(
   textures: &[Texture],
   data: RenderSystemData,
 ) -> Result<(), String> {
-  let (shake, positions, sprites, animations, line_particles) = data;
+  let (shake, flash, positions, sprites, animations, line_particles) = data;
+
+  if flash.0 > 0 {
+    canvas.set_draw_color(Color::WHITE);
+    canvas.clear();
+    canvas.present();
+    return Ok(());
+  }
+
   canvas.set_draw_color(background);
   canvas.clear();
 
@@ -60,10 +69,10 @@ pub fn render(
 
   for particle in (&line_particles).join() {
     canvas.thick_line(
-      particle.x1 as i16,
-      particle.y1 as i16,
-      particle.x2 as i16,
-      particle.y2 as i16,
+      particle.x1 as i16 + shake.x as i16,
+      particle.y1 as i16 + shake.y as i16,
+      particle.x2 as i16 + shake.x as i16,
+      particle.y2 as i16 + shake.y as i16,
       particle.width as u8,
       particle.color,
     )?;

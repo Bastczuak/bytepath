@@ -22,3 +22,6 @@ pub struct Shake {
   pub x: i32,
   pub y: i32,
 }
+
+#[derive(Default)]
+pub struct Flash(pub u8);

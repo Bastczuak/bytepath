@@ -44,12 +44,6 @@ pub struct Velocity {
   pub y: f32,
 }
 
-impl Default for Velocity {
-  fn default() -> Self {
-    Velocity { x: 2.0, y: 2.0 }
-  }
-}
-
 #[derive(Component)]
 #[storage(DenseVecStorage)]
 pub struct Interpolation {

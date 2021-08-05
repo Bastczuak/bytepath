@@ -6,8 +6,11 @@ mod systems;
 
 use crate::{
   components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity},
-  resources::DeltaTick,
-  systems::{PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem},
+  easings::ease_in_out_cubic,
+  resources::{DeltaTick, GameEvents::PlayerDeath, GameEventsChannel},
+  systems::{
+    FlashSystem, PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem,
+  },
 };
 use sdl2::{
   event::Event,
@@ -141,6 +144,7 @@ fn main() -> Result<(), String> {
 
   let mut dispatcher = DispatcherBuilder::new()
     .with(ShakeSystem::default(), "shake_system", &[])
+    .with(FlashSystem::default(), "flash_system", &[])
     .with(PlayerSystem, "player_system", &[])
     .with(ShootingSystem::default(), "shooting_system", &["player_system"])
     .with(ProjectileSystem::default(), "projectile_system", &["player_system"])
@@ -150,7 +154,6 @@ fn main() -> Result<(), String> {
   let mut world = World::new();
   dispatcher.setup(&mut world);
   render::RenderSystemData::setup(&mut world);
-
   world
     .create_entity()
     .with(Player)
@@ -159,7 +162,7 @@ fn main() -> Result<(), String> {
       y: SCREEN_HEIGHT as f32 / 2.0,
     })
     .with(Angle::default())
-    .with(Velocity::default())
+    .with(Velocity { x: 100.0, y: 100.0 })
     .with(Sprite {
       texture_idx: 0,
       region: Rect::new(0, 0, 32, 32),
@@ -183,8 +186,9 @@ fn main() -> Result<(), String> {
 
   let sdl_timer = sdl_context.timer()?;
   let mut last_tick = 0;
-
   let mut event_pump = sdl_context.event_pump()?;
+  let mut reader_id = Write::<GameEventsChannel>::fetch(&world).register_reader();
+  let mut slowdown_timer: Option<f32> = None;
 
   'running: loop {
     for event in event_pump.poll_iter() {
@@ -207,11 +211,26 @@ fn main() -> Result<(), String> {
       *world.write_resource() = keycodes;
     }
 
-    {
-      let current_tick = sdl_timer.ticks();
-      *world.write_resource() = DeltaTick(current_tick - last_tick);
-      last_tick = current_tick;
+    for event in world.read_resource::<GameEventsChannel>().read(&mut reader_id) {
+      if let PlayerDeath(_) = event {
+        slowdown_timer = Some(0.0);
+      }
     }
+
+    let current_tick = sdl_timer.ticks();
+    let delta_tick = current_tick - last_tick;
+    if let Some(mut timer) = slowdown_timer.take() {
+      timer += delta_tick as f32 / 1000.0;
+      if timer <= 1.0 {
+        let easing = ease_in_out_cubic(timer / 1.0);
+        let slow_amount = (1.0 - easing) * 0.25 + easing * 1.0;
+        *world.write_resource() = DeltaTick((delta_tick as f32 * slow_amount) as u32);
+        slowdown_timer.replace(timer);
+      }
+    } else {
+      *world.write_resource() = DeltaTick(delta_tick);
+    }
+    last_tick = current_tick;
 
     dispatcher.dispatch(&world);
     world.maintain();
@@ -219,6 +238,8 @@ fn main() -> Result<(), String> {
 
     std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
   }
+
+  drop(reader_id);
 
   Ok(())
 }
