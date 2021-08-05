@@ -148,7 +148,11 @@ fn main() -> Result<(), String> {
     .with(PlayerSystem, "player_system", &[])
     .with(ShootingSystem::default(), "shooting_system", &["player_system"])
     .with(ProjectileSystem::default(), "projectile_system", &["player_system"])
-    .with(ProjectileDeathSystem, "projectile_death_system", &["projectile_system"])
+    .with(
+      ProjectileDeathSystem::default(),
+      "projectile_death_system",
+      &["projectile_system"],
+    )
     .with(PlayerDeathSystem::default(), "player_death_system", &["player_system"])
     .build();
   let mut world = World::new();

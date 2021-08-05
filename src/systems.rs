@@ -41,6 +41,7 @@ impl<'a> System<'a> for FlashSystem {
   }
 
   fn setup(&mut self, world: &mut World) {
+    Self::SystemData::setup(world);
     self.reader_id = Some(Write::<GameEventsChannel>::fetch(world).register_reader());
   }
 
@@ -304,6 +305,7 @@ impl<'a> System<'a> for ProjectileSystem {
   #[allow(clippy::type_complexity)]
   type SystemData = (
     Entities<'a>,
+    Write<'a, GameEventsChannel>,
     Read<'a, LazyUpdate>,
     Read<'a, DeltaTick>,
     Read<'a, HashSet<Keycode>>,
@@ -320,53 +322,16 @@ impl<'a> System<'a> for ProjectileSystem {
     const PROJECTILE_HEIGHT: f32 = 8.0;
     const PROJECTILE_WIDTH: f32 = 8.0;
 
-    let (entities, lazy, ticks, keycodes, players, projectiles, velocities, angles, sprites, mut positions) = data;
+    let (entities, mut events, lazy, ticks, keycodes, players, projectiles, velocities, angles, sprites, mut positions) =
+      data;
 
     for (_, e, velocity, angle, position) in (&projectiles, &entities, &velocities, &angles, &mut positions).join() {
       position.x += velocity.x * ticks.in_seconds() * f32::cos(angle.radians);
       position.y += velocity.y * ticks.in_seconds() * f32::sin(angle.radians);
 
       if position.x < 0.0 || position.x > SCREEN_WIDTH as f32 || position.y < 0.0 || position.y > SCREEN_HEIGHT as f32 {
-        let x = if position.x < 0.0 {
-          position.x + 1.5
-        } else if position.x > SCREEN_WIDTH as f32 {
-          position.x - 1.5
-        } else {
-          position.x
-        };
-        let y = if position.y < 0.0 {
-          position.y + 1.5
-        } else if position.y > SCREEN_HEIGHT as f32 {
-          position.y - 1.5
-        } else {
-          position.y
-        };
-        let rotation = if position.x < 0.0 || position.x > SCREEN_WIDTH as f32 {
-          90.0
-        } else {
-          0.0
-        };
-
-        lazy
-          .create_entity(&entities)
-          .with(Position { x, y })
-          .with(Animation::new(vec![
-            Sprite {
-              texture_idx: 3,
-              region: Rect::new(0, 0, 6, 3),
-              rotation,
-            },
-            Sprite {
-              texture_idx: 3,
-              region: Rect::new(0, 3, 6, 3),
-              rotation,
-            },
-          ]))
-          .build();
-      }
-
-      if position.x < 0.0 || position.x > SCREEN_WIDTH as f32 || position.y < 0.0 || position.y > SCREEN_HEIGHT as f32 {
         entities.delete(e).unwrap();
+        events.single_write(GameEvents::ProjectileDeath(*position));
       }
     }
 
@@ -427,14 +392,68 @@ impl<'a> System<'a> for ProjectileSystem {
   }
 }
 
-pub struct ProjectileDeathSystem;
+#[derive(Default)]
+pub struct ProjectileDeathSystem {
+  reader_id: Option<ReaderId<GameEvents>>,
+}
 
 impl<'a> System<'a> for ProjectileDeathSystem {
-  type SystemData = (Entities<'a>, Read<'a, DeltaTick>, WriteStorage<'a, Animation>);
+  type SystemData = (
+    Entities<'a>,
+    Write<'a, GameEventsChannel>,
+    Read<'a, LazyUpdate>,
+    Read<'a, DeltaTick>,
+    WriteStorage<'a, Animation>,
+  );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, ticks, mut animations) = data;
+    let (entities, events, lazy, ticks, mut animations) = data;
 
+    for event in events.read(
+      self
+        .reader_id
+        .as_mut()
+        .expect("reader_id Should not be None! Did you forget to initialize in setup()?"),
+    ) {
+      if let GameEvents::ProjectileDeath(pos) = event {
+        let x = if pos.x < 0.0 {
+          pos.x + 1.5
+        } else if pos.x > SCREEN_WIDTH as f32 {
+          pos.x - 1.5
+        } else {
+          pos.x
+        };
+        let y = if pos.y < 0.0 {
+          pos.y + 1.5
+        } else if pos.y > SCREEN_HEIGHT as f32 {
+          pos.y - 1.5
+        } else {
+          pos.y
+        };
+        let rotation = if pos.x < 0.0 || pos.x > SCREEN_WIDTH as f32 {
+          90.0
+        } else {
+          0.0
+        };
+
+        lazy
+          .create_entity(&entities)
+          .with(Position { x, y })
+          .with(Animation::new(vec![
+            Sprite {
+              texture_idx: 3,
+              region: Rect::new(0, 0, 6, 3),
+              rotation,
+            },
+            Sprite {
+              texture_idx: 3,
+              region: Rect::new(0, 3, 6, 3),
+              rotation,
+            },
+          ]))
+          .build();
+      }
+    }
     for (e, animation) in (&entities, &mut animations).join() {
       animation.time += ticks.in_seconds();
 
@@ -447,6 +466,18 @@ impl<'a> System<'a> for ProjectileDeathSystem {
         animation.frame_idx = 1;
       }
     }
+  }
+
+  fn setup(&mut self, world: &mut World) {
+    Self::SystemData::setup(world);
+    self.reader_id = Some(Write::<GameEventsChannel>::fetch(world).register_reader());
+  }
+
+  fn dispose(self, _: &mut World)
+  where
+    Self: Sized,
+  {
+    drop(self.reader_id)
   }
 }
 
