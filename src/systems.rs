@@ -36,8 +36,12 @@ impl<'a> System<'a> for TickSystem {
   fn run(&mut self, data: Self::SystemData) {
     let (entities, lazy, ticks, mut positions, mut interpolations, mut sprites, players, effects) = data;
 
-    // don't process any effects if there is no player entity
+    // don't process any effects if there is no player entity and make sure to clean up existing ones.
     if (&players, &entities).join().count() == 0 {
+      for (_, e) in (&effects, &entities).join() {
+        entities.delete(e).unwrap();
+        self.timer.replace(5.0);
+      }
       return;
     }
 
