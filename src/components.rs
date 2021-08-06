@@ -44,8 +44,21 @@ impl Default for Angle {
 #[derive(Component)]
 #[storage(DenseVecStorage)]
 pub struct Velocity {
+  pub base_x: f32,
+  pub base_y: f32,
   pub x: f32,
   pub y: f32,
+}
+
+impl Velocity {
+  pub fn new(value: f32) -> Self {
+    Velocity {
+      base_x: value,
+      base_y: value,
+      x: value,
+      y: value,
+    }
+  }
 }
 
 #[derive(Component)]

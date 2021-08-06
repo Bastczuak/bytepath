@@ -219,22 +219,38 @@ impl<'a> System<'a> for PlayerSystem {
     Read<'a, DeltaTick>,
     Write<'a, GameEventsChannel>,
     ReadStorage<'a, Player>,
-    ReadStorage<'a, Velocity>,
     ReadStorage<'a, Sprite>,
+    WriteStorage<'a, Velocity>,
     WriteStorage<'a, Position>,
     WriteStorage<'a, Angle>,
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, keycodes, ticks, mut events, players, velocities, sprites, mut positions, mut angles) = data;
+    let (entities, lazy, keycodes, ticks, mut events, players, sprites, mut velocities, mut positions, mut angles) =
+      data;
 
-    for (_, e, velocity, sprite, position, angle) in
-      (&players, &entities, &velocities, &sprites, &mut positions, &mut angles).join()
+    for (_, e, sprite, velocity, position, angle) in (
+      &players,
+      &entities,
+      &sprites,
+      &mut velocities,
+      &mut positions,
+      &mut angles,
+    )
+      .join()
     {
       for keycode in keycodes.iter() {
         match keycode {
           Keycode::Left => angle.radians -= angle.velocity * ticks.in_seconds(),
           Keycode::Right => angle.radians += angle.velocity * ticks.in_seconds(),
+          Keycode::Up => {
+            velocity.x *= 1.5;
+            velocity.y *= 1.5;
+          }
+          Keycode::Down => {
+            velocity.x *= 0.5;
+            velocity.y *= 0.5;
+          }
           Keycode::D => {
             entities.delete(e).unwrap();
             events.single_write(GameEvents::PlayerDeath(*position));
@@ -245,6 +261,8 @@ impl<'a> System<'a> for PlayerSystem {
 
       position.x += velocity.x * ticks.in_seconds() * f32::cos(angle.radians);
       position.y += velocity.y * ticks.in_seconds() * f32::sin(angle.radians);
+      velocity.x = velocity.base_x;
+      velocity.y = velocity.base_y;
 
       let sprite_offset_x = sprite.width() / 2.0;
       let sprite_offset_y = sprite.height() / 2.0;
@@ -270,7 +288,7 @@ impl<'a> System<'a> for PlayerSystem {
               y: SCREEN_HEIGHT as f32 / 2.0,
             })
             .with(Angle::default())
-            .with(Velocity { x: 100.0, y: 100.0 })
+            .with(Velocity::new(100.0))
             .with(Sprite {
               texture_idx: 0,
               region: Rect::new(0, 0, 32, 32),
@@ -293,7 +311,7 @@ impl<'a> System<'a> for PlayerSystem {
         y: SCREEN_HEIGHT as f32 / 2.0,
       })
       .with(Angle::default())
-      .with(Velocity { x: 100.0, y: 100.0 })
+      .with(Velocity::new(100.0))
       .with(Sprite {
         texture_idx: 0,
         region: Rect::new(0, 0, 32, 32),
@@ -462,7 +480,7 @@ impl<'a> System<'a> for ProjectileSystem {
                     + (i as f32 * PROJECTILE_HEIGHT).abs() * f32::sin(p_angle.radians + i as f32 * PI / 2.0),
                 })
                 .with(*p_angle)
-                .with(Velocity { x: 150.0, y: 150.0 })
+                .with(Velocity::new(150.0))
                 .with(Sprite {
                   texture_idx: 2,
                   region: Rect::new(0, 0, 8, 8),
@@ -479,7 +497,7 @@ impl<'a> System<'a> for ProjectileSystem {
                 y: p_pos.y + DISTANCE_MULTIPLIER * p_sprite.height() * f32::sin(p_angle.radians),
               })
               .with(*p_angle)
-              .with(Velocity { x: 150.0, y: 150.0 })
+              .with(Velocity::new(150.0))
               .with(Sprite {
                 texture_idx: 2,
                 region: Rect::new(0, 0, 8, 8),
@@ -653,10 +671,7 @@ impl<'a> System<'a> for PlayerDeathSystem {
           lazy
             .create_entity(&entities)
             .with(Angle { radians, velocity: 0.0 })
-            .with(Velocity {
-              x: velocity,
-              y: velocity,
-            })
+            .with(Velocity::new(velocity))
             .with(Interpolation::new(
               vec![(velocity, 0.0), (length, 0.0), (width, 1.0)], // can't tween the width to 0 because its not allowed by gfx thickline
               time_to_live,
