@@ -1,6 +1,7 @@
 use crate::{
   components::{
-    Angle, Animation, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect, Sprite, Velocity,
+    Angle, Animation, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect, Sprite, TickEffect,
+    Velocity,
   },
   easings::{ease_in_out_cubic, linear},
   resources::{
@@ -14,6 +15,77 @@ use rand::{Rng, SeedableRng};
 use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
 use specs::prelude::*;
 use std::{collections::HashSet, f32::consts::PI};
+
+#[derive(Default)]
+pub struct TickSystem {
+  timer: Option<f32>,
+}
+
+impl<'a> System<'a> for TickSystem {
+  type SystemData = (
+    Entities<'a>,
+    Read<'a, LazyUpdate>,
+    Read<'a, DeltaTick>,
+    WriteStorage<'a, Position>,
+    WriteStorage<'a, Interpolation>,
+    WriteStorage<'a, Sprite>,
+    ReadStorage<'a, Player>,
+    ReadStorage<'a, TickEffect>,
+  );
+
+  fn run(&mut self, data: Self::SystemData) {
+    let (entities, lazy, ticks, mut positions, mut interpolations, mut sprites, players, effects) = data;
+
+    // don't process any effects if there is no player entity
+    if (&players, &entities).join().count() == 0 {
+      return;
+    }
+
+    let mut x = 0.0;
+    let mut y = 0.0;
+    for (_, pos) in (&players, &positions).join() {
+      x = pos.x;
+      y = pos.y;
+    }
+
+    for (e, _, pos, interpolation, sprite) in
+      (&entities, &effects, &mut positions, &mut interpolations, &mut sprites).join()
+    {
+      let (values, finished) = interpolation.eval(ticks.in_seconds(), ease_in_out_cubic);
+      pos.x = x;
+      pos.y = y - values[1];
+      sprite.region = Rect::new(0, 0, sprite.region.width(), values[0] as u32);
+      if finished {
+        &entities.delete(e).unwrap();
+      }
+    }
+
+    if let Some(mut timer) = self.timer.take() {
+      timer -= ticks.in_seconds();
+      if timer < 0.0 {
+        lazy
+          .create_entity(&entities)
+          .with(TickEffect)
+          .with(Position { x, y })
+          .with(Sprite {
+            texture_idx: 4,
+            region: Rect::new(0, 0, 48, 32),
+            rotation: 0.0,
+          })
+          .with(Interpolation::new(vec![(32.0, 0.0), (0.0, 32.0)], 0.1))
+          .build();
+        self.timer.replace(5.0);
+      } else {
+        self.timer.replace(timer);
+      }
+    }
+  }
+
+  fn setup(&mut self, world: &mut World) {
+    Self::SystemData::setup(world);
+    self.timer = Some(5.0);
+  }
+}
 
 #[derive(Default)]
 pub struct FlashSystem {
@@ -254,8 +326,8 @@ impl<'a> System<'a> for ShootingSystem {
       position.x = x;
       position.y = y;
       sprite.rotation = rotation as f64;
-      let value = interpolation.eval(ticks.in_seconds(), ease_in_out_cubic)[0];
-      sprite.region = Rect::new(0, 0, value as u32, value as u32);
+      let (values, _) = interpolation.eval(ticks.in_seconds(), ease_in_out_cubic);
+      sprite.region = Rect::new(0, 0, values[0] as u32, values[0] as u32);
     }
 
     for event in events.read(
@@ -517,11 +589,11 @@ impl<'a> System<'a> for PlayerDeathSystem {
       particle.x2 = particle.x1 + particle.length * f32::cos(angle.radians);
       particle.y2 = particle.y1 + particle.length * f32::sin(angle.radians);
 
-      let new = interpolation.eval(ticks.in_seconds(), linear);
-      velocity.x = new[0];
-      velocity.y = new[0];
-      particle.length = new[1];
-      particle.width = new[2];
+      let (values, _) = interpolation.eval(ticks.in_seconds(), linear);
+      velocity.x = values[0];
+      velocity.y = values[0];
+      particle.length = values[1];
+      particle.width = values[2];
     }
 
     for event in events.read(

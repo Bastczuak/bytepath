@@ -12,6 +12,10 @@ pub struct ShootingEffect;
 
 #[derive(Component, Default)]
 #[storage(NullStorage)]
+pub struct TickEffect;
+
+#[derive(Component, Default)]
+#[storage(NullStorage)]
 pub struct Projectile;
 
 #[derive(Component, Default, Copy, Clone)]
@@ -61,19 +65,24 @@ impl Interpolation {
     }
   }
 
-  pub fn eval(&mut self, t: f32, easing_fn: EasingFunction) -> Vec<f32> {
+  pub fn eval(&mut self, t: f32, easing_fn: EasingFunction) -> (Vec<f32>, bool) {
     self.time += t;
+    let mut finished = false;
     if self.time >= self.duration {
       self.time = 0.0;
+      finished = true
     }
-    self
-      .begin_end
-      .iter()
-      .map(|&(begin, end)| {
-        let easing = (easing_fn)(self.time / self.duration);
-        (1.0 - easing) * begin + easing * end
-      })
-      .collect()
+    (
+      self
+        .begin_end
+        .iter()
+        .map(|&(begin, end)| {
+          let easing = (easing_fn)(self.time / self.duration);
+          (1.0 - easing) * begin + easing * end
+        })
+        .collect(),
+      finished,
+    )
   }
 }
 

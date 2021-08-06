@@ -10,6 +10,7 @@ use crate::{
   resources::{DeltaTick, GameEvents::PlayerDeath, GameEventsChannel},
   systems::{
     FlashSystem, PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem,
+    TickSystem,
   },
 };
 use sdl2::{
@@ -107,6 +108,26 @@ fn create_projectile_death_texture<'a, 'b>(
   Ok(texture)
 }
 
+fn create_tick_effect_texture<'a, 'b>(
+  texture_creator: &'a TextureCreator<WindowContext>,
+  canvas: &'b mut WindowCanvas,
+) -> Result<Texture<'a>, String> {
+  let mut texture = texture_creator
+    .create_texture_target(texture_creator.default_pixel_format(), 48, 23)
+    .map_err(|e| e.to_string())?;
+  canvas
+    .with_texture_canvas(&mut texture, |texture_canvas| {
+      texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
+      texture_canvas.clear();
+      texture_canvas.set_draw_color(Color::WHITE);
+      texture_canvas.fill_rect(Rect::new(0, 0, 48, 23)).unwrap();
+    })
+    .map_err(|e| e.to_string())?;
+  texture.set_blend_mode(BlendMode::Blend);
+
+  Ok(texture)
+}
+
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
   let sdl_video = sdl_context.video()?;
@@ -140,6 +161,7 @@ fn main() -> Result<(), String> {
     create_shooting_effect_texture(&texture_creator, &mut canvas)?,
     create_projectile_texture(&texture_creator, &mut canvas)?,
     create_projectile_death_texture(&texture_creator, &mut canvas)?,
+    create_tick_effect_texture(&texture_creator, &mut canvas)?,
   ];
 
   let mut dispatcher = DispatcherBuilder::new()
@@ -148,6 +170,7 @@ fn main() -> Result<(), String> {
     .with(PlayerSystem, "player_system", &[])
     .with(ShootingSystem::default(), "shooting_system", &["player_system"])
     .with(ProjectileSystem::default(), "projectile_system", &["player_system"])
+    .with(TickSystem::default(), "tick_system", &["player_system"])
     .with(
       ProjectileDeathSystem::default(),
       "projectile_death_system",
