@@ -282,6 +282,25 @@ impl<'a> System<'a> for PlayerSystem {
       }
     }
   }
+
+  fn setup(&mut self, world: &mut World) {
+    Self::SystemData::setup(world);
+    world
+      .create_entity()
+      .with(Player)
+      .with(Position {
+        x: SCREEN_WIDTH as f32 / 2.0,
+        y: SCREEN_HEIGHT as f32 / 2.0,
+      })
+      .with(Angle::default())
+      .with(Velocity { x: 100.0, y: 100.0 })
+      .with(Sprite {
+        texture_idx: 0,
+        region: Rect::new(0, 0, 32, 32),
+        rotation: 0.0,
+      })
+      .build();
+  }
 }
 
 #[derive(Default)]
@@ -362,6 +381,20 @@ impl<'a> System<'a> for ShootingSystem {
   fn setup(&mut self, world: &mut World) {
     Self::SystemData::setup(world);
     self.reader_id = Some(Write::<GameEventsChannel>::fetch(world).register_reader());
+    world
+      .create_entity()
+      .with(ShootingEffect)
+      .with(Position {
+        x: SCREEN_WIDTH as f32 / 2.0,
+        y: SCREEN_HEIGHT as f32 / 2.0,
+      })
+      .with(Sprite {
+        texture_idx: 1,
+        region: Rect::new(0, 0, 0, 0),
+        rotation: 45.0,
+      })
+      .with(Interpolation::new(vec![(8.0, 0.0)], 0.2))
+      .build();
   }
 
   fn dispose(self, _: &mut World)

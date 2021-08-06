@@ -5,7 +5,6 @@ mod resources;
 mod systems;
 
 use crate::{
-  components::{Angle, Interpolation, Player, Position, ShootingEffect, Sprite, Velocity},
   easings::ease_in_out_cubic,
   resources::{DeltaTick, GameEvents::PlayerDeath, GameEventsChannel},
   systems::{
@@ -181,35 +180,6 @@ fn main() -> Result<(), String> {
   let mut world = World::new();
   dispatcher.setup(&mut world);
   render::RenderSystemData::setup(&mut world);
-  world
-    .create_entity()
-    .with(Player)
-    .with(Position {
-      x: SCREEN_WIDTH as f32 / 2.0,
-      y: SCREEN_HEIGHT as f32 / 2.0,
-    })
-    .with(Angle::default())
-    .with(Velocity { x: 100.0, y: 100.0 })
-    .with(Sprite {
-      texture_idx: 0,
-      region: Rect::new(0, 0, 32, 32),
-      rotation: 0.0,
-    })
-    .build();
-  world
-    .create_entity()
-    .with(ShootingEffect)
-    .with(Position {
-      x: SCREEN_WIDTH as f32 / 2.0,
-      y: SCREEN_HEIGHT as f32 / 2.0,
-    })
-    .with(Sprite {
-      texture_idx: 1,
-      region: Rect::new(0, 0, 0, 0),
-      rotation: 45.0,
-    })
-    .with(Interpolation::new(vec![(8.0, 0.0)], 0.2))
-    .build();
 
   let sdl_timer = sdl_context.timer()?;
   let mut last_tick = 0;
