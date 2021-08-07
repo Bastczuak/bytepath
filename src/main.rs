@@ -181,11 +181,12 @@ fn main() -> Result<(), String> {
   dispatcher.setup(&mut world);
   render::RenderSystemData::setup(&mut world);
 
-  let sdl_timer = sdl_context.timer()?;
-  let mut last_tick = 0;
   let mut event_pump = sdl_context.event_pump()?;
   let mut reader_id = Write::<GameEventsChannel>::fetch(&world).register_reader();
   let mut slowdown_timer: Option<f32> = None;
+  let sdl_timer = sdl_context.timer()?;
+  let mut last_tick = 0;
+  let mut sync_ticks = true;
 
   'running: loop {
     for event in event_pump.poll_iter() {
@@ -229,11 +230,14 @@ fn main() -> Result<(), String> {
     }
     last_tick = current_tick;
 
-    dispatcher.dispatch(&world);
-    world.maintain();
-    render::render(&mut canvas, Color::BLACK, &textures, world.system_data())?;
+    if !sync_ticks {
+      dispatcher.dispatch(&world);
+      world.maintain();
+      render::render(&mut canvas, Color::BLACK, &textures, world.system_data())?;
+    }
 
     std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+    sync_ticks = false;
   }
 
   drop(reader_id);
