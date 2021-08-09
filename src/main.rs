@@ -6,7 +6,7 @@ mod systems;
 
 use crate::{
   easings::ease_in_out_cubic,
-  resources::{DeltaTick, GameEvents::PlayerDeath, GameEventsChannel},
+  resources::{GameEvents, GameEventsChannel},
   systems::{
     FlashSystem, PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem,
     TickSystem,
@@ -22,7 +22,10 @@ use sdl2::{
   video::WindowContext,
 };
 use specs::prelude::*;
-use std::{collections::HashSet, time::Duration};
+use std::{
+  collections::HashSet,
+  time::{Duration, Instant},
+};
 
 pub const SCREEN_WIDTH: u32 = 480;
 pub const SCREEN_HEIGHT: u32 = 280;
@@ -183,61 +186,60 @@ fn main() -> Result<(), String> {
 
   let mut event_pump = sdl_context.event_pump()?;
   let mut reader_id = Write::<GameEventsChannel>::fetch(&world).register_reader();
-  let mut slowdown_timer: Option<f32> = None;
-  let sdl_timer = sdl_context.timer()?;
-  let mut last_tick = 0;
-  let mut sync_ticks = true;
+  let mut slowdown_timer: Option<Duration> = None;
+  let frame_rate = Duration::new(0, 1_000_000_000u32 / 60);
+  let mut last_time = Instant::now();
 
   'running: loop {
-    for event in event_pump.poll_iter() {
-      match event {
-        Event::Quit { .. }
-        | Event::KeyDown {
-          keycode: Some(Keycode::Escape),
-          ..
-        } => break 'running,
-        _ => {}
+    for event in world.read_resource::<GameEventsChannel>().read(&mut reader_id) {
+      if let GameEvents::PlayerDeath(_) = event {
+        slowdown_timer = Some(Duration::from_secs_f32(0.0));
       }
     }
 
-    {
+    let current_time = Instant::now();
+    let mut frame_time = current_time - last_time;
+    last_time = current_time;
+
+    while frame_time.as_secs_f32() > 0.0 {
+      let delta_time = frame_time.min(frame_rate);
+      if let Some(mut timer) = slowdown_timer.take() {
+        timer += delta_time;
+        if timer.as_secs_f32() <= 1.0 {
+          let easing = ease_in_out_cubic(timer.as_secs_f32() / 1.0);
+          let slow_amount = (1.0 - easing) * 0.25 + easing * 1.0;
+          *world.write_resource() = Duration::from_secs_f32(delta_time.as_secs_f32() * slow_amount);
+          slowdown_timer.replace(timer);
+        }
+      } else {
+        *world.write_resource() = delta_time;
+      }
+
+      for event in event_pump.poll_iter() {
+        match event {
+          Event::Quit { .. }
+          | Event::KeyDown {
+            keycode: Some(Keycode::Escape),
+            ..
+          } => break 'running,
+          _ => {}
+        }
+      }
+
       let keycodes = event_pump
         .keyboard_state()
         .pressed_scancodes()
         .filter_map(Keycode::from_scancode)
         .collect::<HashSet<Keycode>>();
       *world.write_resource() = keycodes;
-    }
 
-    for event in world.read_resource::<GameEventsChannel>().read(&mut reader_id) {
-      if let PlayerDeath(_) = event {
-        slowdown_timer = Some(0.0);
-      }
-    }
-
-    let current_tick = sdl_timer.ticks();
-    let delta_tick = current_tick - last_tick;
-    if let Some(mut timer) = slowdown_timer.take() {
-      timer += delta_tick as f32 / 1000.0;
-      if timer <= 1.0 {
-        let easing = ease_in_out_cubic(timer / 1.0);
-        let slow_amount = (1.0 - easing) * 0.25 + easing * 1.0;
-        *world.write_resource() = DeltaTick((delta_tick as f32 * slow_amount) as u32);
-        slowdown_timer.replace(timer);
-      }
-    } else {
-      *world.write_resource() = DeltaTick(delta_tick);
-    }
-    last_tick = current_tick;
-
-    if !sync_ticks {
       dispatcher.dispatch(&world);
       world.maintain();
-      render::render(&mut canvas, Color::BLACK, &textures, world.system_data())?;
+
+      frame_time -= delta_time;
     }
 
-    std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
-    sync_ticks = false;
+    render::render(&mut canvas, Color::BLACK, &textures, world.system_data())?;
   }
 
   drop(reader_id);

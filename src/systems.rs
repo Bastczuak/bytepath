@@ -5,7 +5,7 @@ use crate::{
   },
   easings::{ease_in_out_cubic, linear},
   resources::{
-    DeltaTick, Flash, GameEvents,
+    Flash, GameEvents,
     GameEvents::{PlayerDeath, PlayerSpawn},
     GameEventsChannel, Shake,
   },
@@ -14,7 +14,7 @@ use crate::{
 use rand::{Rng, SeedableRng};
 use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
 use specs::prelude::*;
-use std::{collections::HashSet, f32::consts::PI};
+use std::{collections::HashSet, f32::consts::PI, time::Duration};
 
 #[derive(Default)]
 pub struct TickSystem {
@@ -25,7 +25,7 @@ impl<'a> System<'a> for TickSystem {
   type SystemData = (
     Entities<'a>,
     Read<'a, LazyUpdate>,
-    Read<'a, DeltaTick>,
+    Read<'a, Duration>,
     WriteStorage<'a, Position>,
     WriteStorage<'a, Interpolation>,
     WriteStorage<'a, Sprite>,
@@ -34,7 +34,7 @@ impl<'a> System<'a> for TickSystem {
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, ticks, mut positions, mut interpolations, mut sprites, players, effects) = data;
+    let (entities, lazy, time, mut positions, mut interpolations, mut sprites, players, effects) = data;
 
     // don't process any effects if there is no player entity and make sure to clean up existing ones.
     if (&players, &entities).join().count() == 0 {
@@ -55,7 +55,7 @@ impl<'a> System<'a> for TickSystem {
     for (e, _, pos, interpolation, sprite) in
       (&entities, &effects, &mut positions, &mut interpolations, &mut sprites).join()
     {
-      let (values, finished) = interpolation.eval(ticks.in_seconds(), ease_in_out_cubic);
+      let (values, finished) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
       pos.x = x;
       pos.y = y - values[1];
       sprite.region = Rect::new(0, 0, sprite.region.width(), values[0] as u32);
@@ -65,7 +65,7 @@ impl<'a> System<'a> for TickSystem {
     }
 
     if let Some(mut timer) = self.timer.take() {
-      timer -= ticks.in_seconds();
+      timer -= time.as_secs_f32();
       if timer < 0.0 {
         lazy
           .create_entity(&entities)
@@ -141,9 +141,9 @@ pub struct ShakeSystem {
 }
 
 impl<'a> System<'a> for ShakeSystem {
-  type SystemData = (Read<'a, DeltaTick>, Write<'a, Shake>, Write<'a, GameEventsChannel>);
+  type SystemData = (Read<'a, Duration>, Write<'a, Shake>, Write<'a, GameEventsChannel>);
 
-  fn run(&mut self, (ticks, mut shake, events): Self::SystemData) {
+  fn run(&mut self, (time, mut shake, events): Self::SystemData) {
     for event in events.read(
       self
         .reader_id
@@ -156,14 +156,14 @@ impl<'a> System<'a> for ShakeSystem {
     }
 
     if self.is_shaking {
-      self.time += ticks.0 as f32;
+      self.time += time.as_secs_f32();
       if self.time > self.duration {
         self.time = 0.0;
         self.is_shaking = false;
         return;
       }
 
-      let s = self.time / 1000.0 * self.frequency;
+      let s = self.time * self.frequency;
       let s0 = f32::floor(s);
       let s1 = s0 + 1.0;
       let k = if self.time >= self.duration {
@@ -191,9 +191,9 @@ impl<'a> System<'a> for ShakeSystem {
 
   fn setup(&mut self, world: &mut World) {
     Self::SystemData::setup(world);
-    self.duration = 750.0;
+    self.duration = 0.75;
     self.frequency = 40.0;
-    let sample_count = ((self.duration / 1000.0) * self.frequency) as usize;
+    let sample_count = (self.duration * self.frequency) as usize;
     let mut rng = rand::rngs::SmallRng::from_entropy();
     self.samples_x = (0..sample_count).map(|_| rng.gen_range(0.0..1.0) * 2.0 - 1.0).collect();
     self.samples_y = (0..sample_count).map(|_| rng.gen_range(0.0..1.0) * 2.0 - 1.0).collect();
@@ -216,7 +216,7 @@ impl<'a> System<'a> for PlayerSystem {
     Entities<'a>,
     Read<'a, LazyUpdate>,
     Read<'a, HashSet<Keycode>>,
-    Read<'a, DeltaTick>,
+    Read<'a, Duration>,
     Write<'a, GameEventsChannel>,
     ReadStorage<'a, Player>,
     ReadStorage<'a, Sprite>,
@@ -226,7 +226,7 @@ impl<'a> System<'a> for PlayerSystem {
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, keycodes, ticks, mut events, players, sprites, mut velocities, mut positions, mut angles) =
+    let (entities, lazy, keycodes, time, mut events, players, sprites, mut velocities, mut positions, mut angles) =
       data;
 
     for (_, e, sprite, velocity, position, angle) in (
@@ -241,8 +241,8 @@ impl<'a> System<'a> for PlayerSystem {
     {
       for keycode in keycodes.iter() {
         match keycode {
-          Keycode::Left => angle.radians -= angle.velocity * ticks.in_seconds(),
-          Keycode::Right => angle.radians += angle.velocity * ticks.in_seconds(),
+          Keycode::Left => angle.radians -= angle.velocity * time.as_secs_f32(),
+          Keycode::Right => angle.radians += angle.velocity * time.as_secs_f32(),
           Keycode::Up => {
             velocity.x *= 1.5;
             velocity.y *= 1.5;
@@ -259,8 +259,8 @@ impl<'a> System<'a> for PlayerSystem {
         }
       }
 
-      position.x += velocity.x * ticks.in_seconds() * f32::cos(angle.radians);
-      position.y += velocity.y * ticks.in_seconds() * f32::sin(angle.radians);
+      position.x += velocity.x * time.as_secs_f32() * f32::cos(angle.radians);
+      position.y += velocity.y * time.as_secs_f32() * f32::sin(angle.radians);
       velocity.x = velocity.base_x;
       velocity.y = velocity.base_y;
 
@@ -331,7 +331,7 @@ impl<'a> System<'a> for ShootingSystem {
   type SystemData = (
     Entities<'a>,
     Read<'a, LazyUpdate>,
-    Read<'a, DeltaTick>,
+    Read<'a, Duration>,
     Write<'a, GameEventsChannel>,
     ReadStorage<'a, Player>,
     ReadStorage<'a, Angle>,
@@ -342,8 +342,7 @@ impl<'a> System<'a> for ShootingSystem {
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, ticks, events, players, angles, effects, mut positions, mut sprites, mut interpolations) =
-      data;
+    let (entities, lazy, time, events, players, angles, effects, mut positions, mut sprites, mut interpolations) = data;
     let mut x = 0.0;
     let mut y = 0.0;
     let mut rotation = 0.0;
@@ -367,7 +366,7 @@ impl<'a> System<'a> for ShootingSystem {
       position.x = x;
       position.y = y;
       sprite.rotation = rotation as f64;
-      let (values, _) = interpolation.eval(ticks.in_seconds(), ease_in_out_cubic);
+      let (values, _) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
       sprite.region = Rect::new(0, 0, values[0] as u32, values[0] as u32);
     }
 
@@ -434,7 +433,7 @@ impl<'a> System<'a> for ProjectileSystem {
     Entities<'a>,
     Write<'a, GameEventsChannel>,
     Read<'a, LazyUpdate>,
-    Read<'a, DeltaTick>,
+    Read<'a, Duration>,
     Read<'a, HashSet<Keycode>>,
     ReadStorage<'a, Player>,
     ReadStorage<'a, Projectile>,
@@ -449,12 +448,12 @@ impl<'a> System<'a> for ProjectileSystem {
     const PROJECTILE_HEIGHT: f32 = 8.0;
     const PROJECTILE_WIDTH: f32 = 8.0;
 
-    let (entities, mut events, lazy, ticks, keycodes, players, projectiles, velocities, angles, sprites, mut positions) =
+    let (entities, mut events, lazy, time, keycodes, players, projectiles, velocities, angles, sprites, mut positions) =
       data;
 
     for (_, e, velocity, angle, position) in (&projectiles, &entities, &velocities, &angles, &mut positions).join() {
-      position.x += velocity.x * ticks.in_seconds() * f32::cos(angle.radians);
-      position.y += velocity.y * ticks.in_seconds() * f32::sin(angle.radians);
+      position.x += velocity.x * time.as_secs_f32() * f32::cos(angle.radians);
+      position.y += velocity.y * time.as_secs_f32() * f32::sin(angle.radians);
 
       if position.x < 0.0 || position.x > SCREEN_WIDTH as f32 || position.y < 0.0 || position.y > SCREEN_HEIGHT as f32 {
         entities.delete(e).unwrap();
@@ -463,7 +462,7 @@ impl<'a> System<'a> for ProjectileSystem {
     }
 
     if let Some(mut timer) = self.spawn_time_s.take() {
-      timer -= ticks.in_seconds();
+      timer -= time.as_secs_f32();
       if timer <= 0.0 {
         for (_, p_angle, p_pos, p_sprite) in (&players, &angles, &positions, &sprites).join() {
           if keycodes.contains(&Keycode::F1) {
@@ -529,12 +528,12 @@ impl<'a> System<'a> for ProjectileDeathSystem {
     Entities<'a>,
     Write<'a, GameEventsChannel>,
     Read<'a, LazyUpdate>,
-    Read<'a, DeltaTick>,
+    Read<'a, Duration>,
     WriteStorage<'a, Animation>,
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, events, lazy, ticks, mut animations) = data;
+    let (entities, events, lazy, time, mut animations) = data;
 
     for event in events.read(
       self
@@ -582,7 +581,7 @@ impl<'a> System<'a> for ProjectileDeathSystem {
       }
     }
     for (e, animation) in (&entities, &mut animations).join() {
-      animation.time += ticks.in_seconds();
+      animation.time += time.as_secs_f32();
 
       if animation.time >= 0.25 {
         entities.delete(e).unwrap();
@@ -619,7 +618,7 @@ impl<'a> System<'a> for PlayerDeathSystem {
   type SystemData = (
     Entities<'a>,
     Read<'a, LazyUpdate>,
-    Read<'a, DeltaTick>,
+    Read<'a, Duration>,
     Write<'a, GameEventsChannel>,
     ReadStorage<'a, Angle>,
     WriteStorage<'a, Velocity>,
@@ -628,23 +627,23 @@ impl<'a> System<'a> for PlayerDeathSystem {
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, ticks, events, angels, mut velocities, mut particles, mut interpolations) = data;
+    let (entities, lazy, time, events, angels, mut velocities, mut particles, mut interpolations) = data;
 
     for (e, angle, velocity, particle, interpolation) in
       (&entities, &angels, &mut velocities, &mut particles, &mut interpolations).join()
     {
-      particle.time_to_live -= ticks.in_seconds();
+      particle.time_to_live -= time.as_secs_f32();
       if particle.time_to_live < 0.0 {
         entities.delete(e).unwrap();
         continue;
       }
 
-      particle.x1 += velocity.x * f32::cos(angle.radians) * ticks.in_seconds();
-      particle.y1 += velocity.y * f32::sin(angle.radians) * ticks.in_seconds();
+      particle.x1 += velocity.x * f32::cos(angle.radians) * time.as_secs_f32();
+      particle.y1 += velocity.y * f32::sin(angle.radians) * time.as_secs_f32();
       particle.x2 = particle.x1 + particle.length * f32::cos(angle.radians);
       particle.y2 = particle.y1 + particle.length * f32::sin(angle.radians);
 
-      let (values, _) = interpolation.eval(ticks.in_seconds(), linear);
+      let (values, _) = interpolation.eval(time.as_secs_f32(), linear);
       velocity.x = values[0];
       velocity.y = values[0];
       particle.length = values[1];
