@@ -39,7 +39,11 @@ pub fn render(
 
   for (position, sprite) in (&positions, &sprites).join() {
     let screen_position = Point::new(position.x as i32 + shake.x, position.y as i32 + shake.y);
-    let screen_rect = Rect::from_center(screen_position, sprite.region.width(), sprite.region.height());
+    let screen_rect = Rect::from_center(
+      screen_position,
+      sprite.scaled_region_width(),
+      sprite.scaled_region_height(),
+    );
     canvas.copy_ex(
       &textures[sprite.texture_idx],
       sprite.region,
@@ -54,7 +58,11 @@ pub fn render(
   for (position, animation) in (&positions, &animations).join() {
     if let Some(sprite) = animation.current_frame() {
       let screen_position = Point::new(position.x as i32, position.y as i32);
-      let screen_rect = Rect::from_center(screen_position, sprite.region.width(), sprite.region.height());
+      let screen_rect = Rect::from_center(
+        screen_position,
+        sprite.scaled_region_width(),
+        sprite.scaled_region_height(),
+      );
       canvas.copy_ex(
         &textures[sprite.texture_idx],
         sprite.region,

@@ -16,6 +16,10 @@ pub struct TickEffect;
 
 #[derive(Component, Default)]
 #[storage(NullStorage)]
+pub struct TrailEffect;
+
+#[derive(Component, Default)]
+#[storage(NullStorage)]
 pub struct Projectile;
 
 #[derive(Component, Default, Copy, Clone)]
@@ -105,6 +109,7 @@ pub struct Sprite {
   pub texture_idx: usize,
   pub region: Rect,
   pub rotation: f64,
+  pub scale: f32,
 }
 
 impl Sprite {
@@ -114,6 +119,14 @@ impl Sprite {
 
   pub fn height(&self) -> f32 {
     self.region.height() as f32
+  }
+
+  pub fn scaled_region_width(&self) -> u32 {
+    (self.region.width() as f32 * self.scale) as u32
+  }
+
+  pub fn scaled_region_height(&self) -> u32 {
+    (self.region.height() as f32 * self.scale) as u32
   }
 }
 

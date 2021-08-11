@@ -1,15 +1,17 @@
 mod components;
 mod easings;
+mod environment;
 mod render;
 mod resources;
 mod systems;
 
 use crate::{
   easings::ease_in_out_cubic,
+  environment::{RGB_COLOR_BOOST, RGB_COLOR_NON_BOOST, SCREEN_HEIGHT, SCREEN_WIDTH},
   resources::{GameEvents, GameEventsChannel},
   systems::{
     FlashSystem, PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem,
-    TickSystem,
+    TickEffectSystem, TrailEffectSystem,
   },
 };
 use sdl2::{
@@ -26,9 +28,6 @@ use std::{
   collections::HashSet,
   time::{Duration, Instant},
 };
-
-pub const SCREEN_WIDTH: u32 = 480;
-pub const SCREEN_HEIGHT: u32 = 280;
 
 fn create_ship_texture<'a, 'b>(
   texture_creator: &'a TextureCreator<WindowContext>,
@@ -130,6 +129,30 @@ fn create_tick_effect_texture<'a, 'b>(
   Ok(texture)
 }
 
+fn create_trail_effect_texture<'a, 'b>(
+  texture_creator: &'a TextureCreator<WindowContext>,
+  canvas: &'b mut WindowCanvas,
+) -> Result<Texture<'a>, String> {
+  let mut texture = texture_creator
+    .create_texture_target(texture_creator.default_pixel_format(), 96, 32)
+    .map_err(|e| e.to_string())?;
+  canvas
+    .with_texture_canvas(&mut texture, |texture_canvas| {
+      texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
+      texture_canvas.clear();
+      texture_canvas
+        .filled_circle(16, 16, 15, Color::from(RGB_COLOR_NON_BOOST))
+        .unwrap();
+      texture_canvas
+        .filled_circle(48, 16, 15, Color::from(RGB_COLOR_BOOST))
+        .unwrap();
+    })
+    .map_err(|e| e.to_string())?;
+  texture.set_blend_mode(BlendMode::Blend);
+
+  Ok(texture)
+}
+
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
   let sdl_video = sdl_context.video()?;
@@ -163,6 +186,7 @@ fn main() -> Result<(), String> {
     create_projectile_texture(&texture_creator, &mut canvas)?,
     create_projectile_death_texture(&texture_creator, &mut canvas)?,
     create_tick_effect_texture(&texture_creator, &mut canvas)?,
+    create_trail_effect_texture(&texture_creator, &mut canvas)?,
   ];
 
   let mut dispatcher = DispatcherBuilder::new()
@@ -171,7 +195,8 @@ fn main() -> Result<(), String> {
     .with(PlayerSystem, "player_system", &[])
     .with(ShootingSystem::default(), "shooting_system", &["player_system"])
     .with(ProjectileSystem::default(), "projectile_system", &["player_system"])
-    .with(TickSystem::default(), "tick_system", &["player_system"])
+    .with(TickEffectSystem::default(), "tick_effect_system", &["player_system"])
+    .with(TrailEffectSystem::default(), "trail_effect_system", &["player_system"])
     .with(
       ProjectileDeathSystem::default(),
       "projectile_death_system",

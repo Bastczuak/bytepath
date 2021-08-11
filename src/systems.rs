@@ -1,7 +1,7 @@
 use crate::{
   components::{
     Angle, Animation, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect, Sprite, TickEffect,
-    Velocity,
+    TrailEffect, Velocity,
   },
   easings::{ease_in_out_cubic, linear},
   resources::{
@@ -17,11 +17,110 @@ use specs::prelude::*;
 use std::{collections::HashSet, f32::consts::PI, time::Duration};
 
 #[derive(Default)]
-pub struct TickSystem {
+pub struct TrailEffectSystem {
+  timer: Option<f32>,
+  rng: Option<rand::rngs::SmallRng>,
+}
+
+impl<'a> System<'a> for TrailEffectSystem {
+  type SystemData = (
+    Entities<'a>,
+    Read<'a, LazyUpdate>,
+    Read<'a, Duration>,
+    Read<'a, HashSet<Keycode>>,
+    WriteStorage<'a, Interpolation>,
+    WriteStorage<'a, Animation>,
+    ReadStorage<'a, Position>,
+    ReadStorage<'a, Angle>,
+    ReadStorage<'a, Player>,
+    ReadStorage<'a, TrailEffect>,
+  );
+
+  fn run(&mut self, data: Self::SystemData) {
+    let (entities, lazy, time, keycodes, mut interpolations, mut animations, positions, angles, players, effects) =
+      data;
+
+    // don't process any effects if there is no player entity and make sure to clean up existing ones.
+    if (&players, &entities).join().count() == 0 {
+      for (_, e) in (&effects, &entities).join() {
+        entities.delete(e).unwrap();
+        self.timer.replace(0.01);
+      }
+      return;
+    }
+
+    let mut animation_frame_idx = 0;
+    if keycodes.contains(&Keycode::Up) {
+      animation_frame_idx = 1;
+    }
+
+    for (_, e, interpolation, animation) in (&effects, &entities, &mut interpolations, &mut animations).join() {
+      let (values, finished) = interpolation.eval(time.as_secs_f32(), linear);
+      animation.frame_idx = animation_frame_idx;
+      animation.frames[animation.frame_idx].scale = values[0];
+      if finished {
+        entities.delete(e).unwrap();
+      }
+    }
+
+    if let Some(mut timer) = self.timer.take() {
+      timer -= time.as_secs_f32();
+      if timer < 0.0 {
+        let rng = self
+          .rng
+          .as_mut()
+          .expect("rng Should not be None! Did you forget to initialize in setup()?");
+        let mut x = 0.0;
+        let mut y = 0.0;
+        let scale = rng.gen_range(0.25..0.35);
+        let width = 32;
+        let height = 32;
+        for (_, pos, angle) in (&players, &positions, &angles).join() {
+          x = pos.x - 0.5 * width as f32 * f32::cos(angle.radians);
+          y = pos.y - 0.5 * height as f32 * f32::sin(angle.radians);
+        }
+        let mut animation = Animation::new(vec![
+          Sprite {
+            texture_idx: 5,
+            region: Rect::new(0, 0, width, height),
+            rotation: 0.0,
+            scale,
+          },
+          Sprite {
+            texture_idx: 5,
+            region: Rect::new(32, 0, width, height),
+            rotation: 0.0,
+            scale,
+          },
+        ]);
+        animation.frame_idx = animation_frame_idx;
+        lazy
+          .create_entity(&entities)
+          .with(TrailEffect)
+          .with(Position { x, y })
+          .with(animation)
+          .with(Interpolation::new(vec![(scale, 0.0)], rng.gen_range(0.15..0.25)))
+          .build();
+        self.timer.replace(0.01);
+      } else {
+        self.timer.replace(timer);
+      }
+    }
+  }
+
+  fn setup(&mut self, world: &mut World) {
+    Self::SystemData::setup(world);
+    self.timer = Some(0.01);
+    self.rng = Some(rand::rngs::SmallRng::from_entropy());
+  }
+}
+
+#[derive(Default)]
+pub struct TickEffectSystem {
   timer: Option<f32>,
 }
 
-impl<'a> System<'a> for TickSystem {
+impl<'a> System<'a> for TickEffectSystem {
   type SystemData = (
     Entities<'a>,
     Read<'a, LazyUpdate>,
@@ -75,6 +174,7 @@ impl<'a> System<'a> for TickSystem {
             texture_idx: 4,
             region: Rect::new(0, 0, 48, 32),
             rotation: 0.0,
+            scale: 1.0,
           })
           .with(Interpolation::new(vec![(32.0, 0.0), (0.0, 32.0)], 0.1))
           .build();
@@ -293,6 +393,7 @@ impl<'a> System<'a> for PlayerSystem {
               texture_idx: 0,
               region: Rect::new(0, 0, 32, 32),
               rotation: 0.0,
+              scale: 1.0,
             })
             .build();
           events.single_write(PlayerSpawn);
@@ -316,6 +417,7 @@ impl<'a> System<'a> for PlayerSystem {
         texture_idx: 0,
         region: Rect::new(0, 0, 32, 32),
         rotation: 0.0,
+        scale: 1.0,
       })
       .build();
   }
@@ -346,10 +448,9 @@ impl<'a> System<'a> for ShootingSystem {
     let mut x = 0.0;
     let mut y = 0.0;
     let mut rotation = 0.0;
-    let number_of_players = (&players, &entities).join().count();
 
-    if number_of_players == 0 {
-      // delete all shooting effects if there are no more players
+    // delete all shooting effects if there are no more players
+    if (&players, &entities).join().count() == 0 {
       for (_, e) in (&effects, &entities).join() {
         entities.delete(e).unwrap();
       }
@@ -367,7 +468,7 @@ impl<'a> System<'a> for ShootingSystem {
       position.y = y;
       sprite.rotation = rotation as f64;
       let (values, _) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
-      sprite.region = Rect::new(0, 0, values[0] as u32, values[0] as u32);
+      sprite.scale = values[0];
     }
 
     for event in events.read(
@@ -386,10 +487,11 @@ impl<'a> System<'a> for ShootingSystem {
           })
           .with(Sprite {
             texture_idx: 1,
-            region: Rect::new(0, 0, 0, 0),
+            region: Rect::new(0, 0, 8, 8),
             rotation: 45.0,
+            scale: 1.0,
           })
-          .with(Interpolation::new(vec![(8.0, 0.0)], 0.2))
+          .with(Interpolation::new(vec![(1.0, 0.0)], 0.2))
           .build();
       }
     }
@@ -407,10 +509,11 @@ impl<'a> System<'a> for ShootingSystem {
       })
       .with(Sprite {
         texture_idx: 1,
-        region: Rect::new(0, 0, 0, 0),
+        region: Rect::new(0, 0, 8, 8),
         rotation: 45.0,
+        scale: 1.0,
       })
-      .with(Interpolation::new(vec![(8.0, 0.0)], 0.2))
+      .with(Interpolation::new(vec![(1.0, 0.0)], 0.2))
       .build();
   }
 
@@ -484,6 +587,7 @@ impl<'a> System<'a> for ProjectileSystem {
                   texture_idx: 2,
                   region: Rect::new(0, 0, 8, 8),
                   rotation: (p_angle.radians * 180.0 / PI) as f64,
+                  scale: 1.0,
                 })
                 .build();
             }
@@ -501,6 +605,7 @@ impl<'a> System<'a> for ProjectileSystem {
                 texture_idx: 2,
                 region: Rect::new(0, 0, 8, 8),
                 rotation: (p_angle.radians * 180.0 / PI) as f64,
+                scale: 1.0,
               })
               .build();
           }
@@ -530,10 +635,11 @@ impl<'a> System<'a> for ProjectileDeathSystem {
     Read<'a, LazyUpdate>,
     Read<'a, Duration>,
     WriteStorage<'a, Animation>,
+    ReadStorage<'a, Projectile>,
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, events, lazy, time, mut animations) = data;
+    let (entities, events, lazy, time, mut animations, projectiles) = data;
 
     for event in events.read(
       self
@@ -564,23 +670,26 @@ impl<'a> System<'a> for ProjectileDeathSystem {
 
         lazy
           .create_entity(&entities)
+          .with(Projectile)
           .with(Position { x, y })
           .with(Animation::new(vec![
             Sprite {
               texture_idx: 3,
               region: Rect::new(0, 0, 6, 3),
               rotation,
+              scale: 1.0,
             },
             Sprite {
               texture_idx: 3,
               region: Rect::new(0, 3, 6, 3),
               rotation,
+              scale: 1.0,
             },
           ]))
           .build();
       }
     }
-    for (e, animation) in (&entities, &mut animations).join() {
+    for (_, e, animation) in (&projectiles, &entities, &mut animations).join() {
       animation.time += time.as_secs_f32();
 
       if animation.time >= 0.25 {
