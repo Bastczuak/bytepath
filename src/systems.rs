@@ -23,6 +23,7 @@ pub struct TrailEffectSystem {
 }
 
 impl<'a> System<'a> for TrailEffectSystem {
+  #[allow(clippy::type_complexity)]
   type SystemData = (
     Entities<'a>,
     Read<'a, LazyUpdate>,
@@ -121,6 +122,7 @@ pub struct TickEffectSystem {
 }
 
 impl<'a> System<'a> for TickEffectSystem {
+  #[allow(clippy::type_complexity)]
   type SystemData = (
     Entities<'a>,
     Read<'a, LazyUpdate>,
@@ -159,7 +161,7 @@ impl<'a> System<'a> for TickEffectSystem {
       pos.y = y - values[1];
       sprite.region = Rect::new(0, 0, sprite.region.width(), values[0] as u32);
       if finished {
-        &entities.delete(e).unwrap();
+        entities.delete(e).unwrap();
       }
     }
 
@@ -629,6 +631,7 @@ pub struct ProjectileDeathSystem {
 }
 
 impl<'a> System<'a> for ProjectileDeathSystem {
+  #[allow(clippy::type_complexity)]
   type SystemData = (
     Entities<'a>,
     Write<'a, GameEventsChannel>,
