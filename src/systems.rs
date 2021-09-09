@@ -68,6 +68,7 @@ impl<'a> System<'a> for TrailEffectSystem {
     (&effects, &entities, &mut interpolations, &mut animations, &mut sprites).join()
     {
       let (values, finished) = interpolation.eval(time.as_secs_f32(), linear);
+      // TODO: The Sprite struct is copied every single frame but it should just get toggled
       if is_blue_boost_trail {
         *sprite = animation.frames[1];
       } else {
