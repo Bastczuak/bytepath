@@ -321,20 +321,20 @@ impl<'a> System<'a> for PlayerSystem {
     Read<'a, Duration>,
     Write<'a, GameEventsChannel>,
     ReadStorage<'a, Player>,
-    ReadStorage<'a, Sprite>,
+    WriteStorage<'a, Sprite>,
     WriteStorage<'a, Velocity>,
     WriteStorage<'a, Position>,
     WriteStorage<'a, Angle>,
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, keycodes, time, mut events, players, sprites, mut velocities, mut positions, mut angles) =
+    let (entities, lazy, keycodes, time, mut events, players, mut sprites, mut velocities, mut positions, mut angles) =
       data;
 
     for (_, e, sprite, velocity, position, angle) in (
       &players,
       &entities,
-      &sprites,
+      &mut sprites,
       &mut velocities,
       &mut positions,
       &mut angles,
@@ -361,6 +361,7 @@ impl<'a> System<'a> for PlayerSystem {
         }
       }
 
+      sprite.rotation = (angle.radians * 180.0 / PI) as f64;
       position.x += velocity.x * time.as_secs_f32() * f32::cos(angle.radians);
       position.y += velocity.y * time.as_secs_f32() * f32::sin(angle.radians);
       velocity.x = velocity.base_x;
