@@ -103,13 +103,14 @@ impl Interpolation {
   }
 }
 
-#[derive(Component)]
+#[derive(Component, Copy, Clone)]
 #[storage(DenseVecStorage)]
 pub struct Sprite {
+  pub z_index: usize,
   pub texture_idx: usize,
-  pub region: Rect,
   pub rotation: f64,
   pub scale: f32,
+  pub region: Rect,
 }
 
 impl Sprite {
@@ -130,25 +131,31 @@ impl Sprite {
   }
 }
 
+impl Default for Sprite {
+  fn default() -> Self {
+    Self {
+      texture_idx: 0,
+      region: Rect::new(0, 0, 0, 0),
+      rotation: 0.0,
+      scale: 1.0,
+      z_index: 1,
+    }
+  }
+}
+
 #[derive(Component)]
 #[storage(DenseVecStorage)]
 pub struct Animation {
   pub time: f32,
-  pub frame_idx: usize,
   pub frames: Vec<Sprite>,
 }
 
-impl Animation {
-  pub fn new(frames: Vec<Sprite>) -> Self {
+impl Default for Animation {
+  fn default() -> Self {
     Self {
       time: 0.0,
-      frame_idx: 0,
-      frames,
+      frames: Vec::with_capacity(2),
     }
-  }
-
-  pub fn current_frame(&self) -> Option<&Sprite> {
-    self.frames.get(self.frame_idx)
   }
 }
 

@@ -31,6 +31,7 @@ impl<'a> System<'a> for TrailEffectSystem {
     Read<'a, HashSet<Keycode>>,
     WriteStorage<'a, Interpolation>,
     WriteStorage<'a, Animation>,
+    WriteStorage<'a, Sprite>,
     ReadStorage<'a, Position>,
     ReadStorage<'a, Angle>,
     ReadStorage<'a, Player>,
@@ -38,8 +39,19 @@ impl<'a> System<'a> for TrailEffectSystem {
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, time, keycodes, mut interpolations, mut animations, positions, angles, players, effects) =
-      data;
+    let (
+      entities,
+      lazy,
+      time,
+      keycodes,
+      mut interpolations,
+      mut animations,
+      mut sprites,
+      positions,
+      angles,
+      players,
+      effects,
+    ) = data;
 
     // don't process any effects if there is no player entity and make sure to clean up existing ones.
     if (&players, &entities).join().count() == 0 {
@@ -50,15 +62,18 @@ impl<'a> System<'a> for TrailEffectSystem {
       return;
     }
 
-    let mut animation_frame_idx = 0;
-    if keycodes.contains(&Keycode::Up) {
-      animation_frame_idx = 1;
-    }
+    let is_blue_boost_trail = keycodes.contains(&Keycode::Up);
 
-    for (_, e, interpolation, animation) in (&effects, &entities, &mut interpolations, &mut animations).join() {
+    for (_, e, interpolation, animation, sprite) in
+    (&effects, &entities, &mut interpolations, &mut animations, &mut sprites).join()
+    {
       let (values, finished) = interpolation.eval(time.as_secs_f32(), linear);
-      animation.frame_idx = animation_frame_idx;
-      animation.frames[animation.frame_idx].scale = values[0];
+      if is_blue_boost_trail {
+        *sprite = animation.frames[1];
+      } else {
+        *sprite = animation.frames[0];
+      }
+      sprite.scale = values[0];
       if finished {
         entities.delete(e).unwrap();
       }
@@ -80,26 +95,30 @@ impl<'a> System<'a> for TrailEffectSystem {
           x = pos.x - 0.5 * width as f32 * f32::cos(angle.radians);
           y = pos.y - 0.5 * height as f32 * f32::sin(angle.radians);
         }
-        let mut animation = Animation::new(vec![
-          Sprite {
-            texture_idx: 5,
-            region: Rect::new(0, 0, width, height),
-            rotation: 0.0,
-            scale,
-          },
-          Sprite {
-            texture_idx: 5,
-            region: Rect::new(32, 0, width, height),
-            rotation: 0.0,
-            scale,
-          },
-        ]);
-        animation.frame_idx = animation_frame_idx;
         lazy
           .create_entity(&entities)
           .with(TrailEffect)
           .with(Position { x, y })
-          .with(animation)
+          .with(Sprite::default())
+          .with(Animation {
+            frames: vec![
+              Sprite {
+                texture_idx: 5,
+                region: Rect::new(0, 0, width, height),
+                scale,
+                z_index: 20,
+                ..Default::default()
+              },
+              Sprite {
+                texture_idx: 5,
+                region: Rect::new(32, 0, width, height),
+                scale,
+                z_index: 20,
+                ..Default::default()
+              },
+            ],
+            ..Default::default()
+          })
           .with(Interpolation::new(vec![(scale, 0.0)], rng.gen_range(0.15..0.25)))
           .build();
         self.timer.replace(0.01);
@@ -175,8 +194,7 @@ impl<'a> System<'a> for TickEffectSystem {
           .with(Sprite {
             texture_idx: 4,
             region: Rect::new(0, 0, 48, 32),
-            rotation: 0.0,
-            scale: 1.0,
+            ..Default::default()
           })
           .with(Interpolation::new(vec![(32.0, 0.0), (0.0, 32.0)], 0.1))
           .build();
@@ -277,7 +295,11 @@ impl<'a> System<'a> for ShakeSystem {
       fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
         move |n| {
           let n = n as usize;
-          if n >= samples.len() { 0.0 } else { samples[n] }
+          if n >= samples.len() {
+            0.0
+          } else {
+            samples[n]
+          }
         }
       }
       let noise_x = noise(&self.samples_x);
@@ -395,8 +417,8 @@ impl<'a> System<'a> for PlayerSystem {
             .with(Sprite {
               texture_idx: 0,
               region: Rect::new(0, 0, 32, 32),
-              rotation: 0.0,
-              scale: 1.0,
+              z_index: 10,
+              ..Default::default()
             })
             .build();
           events.single_write(PlayerSpawn);
@@ -419,8 +441,8 @@ impl<'a> System<'a> for PlayerSystem {
       .with(Sprite {
         texture_idx: 0,
         region: Rect::new(0, 0, 32, 32),
-        rotation: 0.0,
-        scale: 1.0,
+        z_index: 10,
+        ..Default::default()
       })
       .build();
   }
@@ -492,7 +514,7 @@ impl<'a> System<'a> for ShootingSystem {
             texture_idx: 1,
             region: Rect::new(0, 0, 8, 8),
             rotation: 45.0,
-            scale: 1.0,
+            ..Default::default()
           })
           .with(Interpolation::new(vec![(1.0, 0.0)], 0.2))
           .build();
@@ -514,7 +536,7 @@ impl<'a> System<'a> for ShootingSystem {
         texture_idx: 1,
         region: Rect::new(0, 0, 8, 8),
         rotation: 45.0,
-        scale: 1.0,
+        ..Default::default()
       })
       .with(Interpolation::new(vec![(1.0, 0.0)], 0.2))
       .build();
@@ -590,7 +612,7 @@ impl<'a> System<'a> for ProjectileSystem {
                   texture_idx: 2,
                   region: Rect::new(0, 0, 8, 8),
                   rotation: (p_angle.radians * 180.0 / PI) as f64,
-                  scale: 1.0,
+                  ..Default::default()
                 })
                 .build();
             }
@@ -608,7 +630,7 @@ impl<'a> System<'a> for ProjectileSystem {
                 texture_idx: 2,
                 region: Rect::new(0, 0, 8, 8),
                 rotation: (p_angle.radians * 180.0 / PI) as f64,
-                scale: 1.0,
+                ..Default::default()
               })
               .build();
           }
@@ -639,11 +661,12 @@ impl<'a> System<'a> for ProjectileDeathSystem {
     Read<'a, LazyUpdate>,
     Read<'a, Duration>,
     WriteStorage<'a, Animation>,
+    WriteStorage<'a, Sprite>,
     ReadStorage<'a, Projectile>,
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, events, lazy, time, mut animations, projectiles) = data;
+    let (entities, events, lazy, time, mut animations, mut sprites, projectiles) = data;
 
     for event in events.read(
       self
@@ -676,24 +699,33 @@ impl<'a> System<'a> for ProjectileDeathSystem {
           .create_entity(&entities)
           .with(Projectile)
           .with(Position { x, y })
-          .with(Animation::new(vec![
-            Sprite {
-              texture_idx: 3,
-              region: Rect::new(0, 0, 6, 3),
-              rotation,
-              scale: 1.0,
-            },
-            Sprite {
-              texture_idx: 3,
-              region: Rect::new(0, 3, 6, 3),
-              rotation,
-              scale: 1.0,
-            },
-          ]))
+          .with(Sprite {
+            texture_idx: 3,
+            region: Rect::new(0, 0, 6, 3),
+            rotation,
+            ..Default::default()
+          })
+          .with(Animation {
+            frames: vec![
+              Sprite {
+                texture_idx: 3,
+                region: Rect::new(0, 0, 6, 3),
+                rotation,
+                ..Default::default()
+              },
+              Sprite {
+                texture_idx: 3,
+                region: Rect::new(0, 3, 6, 3),
+                rotation,
+                ..Default::default()
+              },
+            ],
+            ..Default::default()
+          })
           .build();
       }
     }
-    for (_, e, animation) in (&projectiles, &entities, &mut animations).join() {
+    for (_, e, animation, sprite) in (&projectiles, &entities, &mut animations, &mut sprites).join() {
       animation.time += time.as_secs_f32();
 
       if animation.time >= 0.25 {
@@ -702,7 +734,7 @@ impl<'a> System<'a> for ProjectileDeathSystem {
       }
 
       if animation.time >= 0.1 {
-        animation.frame_idx = 1;
+        *sprite = animation.frames[1];
       }
     }
   }

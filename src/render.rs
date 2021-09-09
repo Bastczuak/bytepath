@@ -1,5 +1,5 @@
 use crate::{
-  components::{Animation, LineParticle, Position, Sprite},
+  components::{LineParticle, Position, Sprite},
   resources::{Flash, Shake},
 };
 use sdl2::{
@@ -15,7 +15,6 @@ pub type RenderSystemData<'a> = (
   Read<'a, Flash>,
   ReadStorage<'a, Position>,
   ReadStorage<'a, Sprite>,
-  ReadStorage<'a, Animation>,
   ReadStorage<'a, LineParticle>,
 );
 
@@ -25,7 +24,7 @@ pub fn render(
   textures: &[Texture],
   data: RenderSystemData,
 ) -> Result<(), String> {
-  let (shake, flash, positions, sprites, animations, line_particles) = data;
+  let (shake, flash, positions, sprites, line_particles) = data;
 
   if flash.0 > 0 {
     canvas.set_draw_color(Color::WHITE);
@@ -37,7 +36,10 @@ pub fn render(
   canvas.set_draw_color(background);
   canvas.clear();
 
-  for (position, sprite) in (&positions, &sprites).join() {
+  let mut sorted_vec_by_z_index = (&sprites, &positions).join().collect::<Vec<_>>();
+  sorted_vec_by_z_index.sort_by(|(a, _), (b, _)| a.z_index.cmp(&b.z_index));
+
+  for (sprite, position) in sorted_vec_by_z_index {
     let screen_position = Point::new(position.x as i32 + shake.x, position.y as i32 + shake.y);
     let screen_rect = Rect::from_center(
       screen_position,
@@ -53,26 +55,6 @@ pub fn render(
       false,
       false,
     )?;
-  }
-
-  for (position, animation) in (&positions, &animations).join() {
-    if let Some(sprite) = animation.current_frame() {
-      let screen_position = Point::new(position.x as i32, position.y as i32);
-      let screen_rect = Rect::from_center(
-        screen_position,
-        sprite.scaled_region_width(),
-        sprite.scaled_region_height(),
-      );
-      canvas.copy_ex(
-        &textures[sprite.texture_idx],
-        sprite.region,
-        screen_rect,
-        sprite.rotation,
-        None,
-        false,
-        false,
-      )?;
-    }
   }
 
   for particle in (&line_particles).join() {
