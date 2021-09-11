@@ -65,7 +65,7 @@ impl<'a> System<'a> for TrailEffectSystem {
     let is_blue_boost_trail = keycodes.contains(&Keycode::Up);
 
     for (_, e, interpolation, animation, sprite) in
-    (&effects, &entities, &mut interpolations, &mut animations, &mut sprites).join()
+      (&effects, &entities, &mut interpolations, &mut animations, &mut sprites).join()
     {
       let (values, finished) = interpolation.eval(time.as_secs_f32(), linear);
       // TODO: The Sprite struct is copied every single frame but it should just get toggled
@@ -296,11 +296,7 @@ impl<'a> System<'a> for ShakeSystem {
       fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
         move |n| {
           let n = n as usize;
-          if n >= samples.len() {
-            0.0
-          } else {
-            samples[n]
-          }
+          if n >= samples.len() { 0.0 } else { samples[n] }
         }
       }
       let noise_x = noise(&self.samples_x);

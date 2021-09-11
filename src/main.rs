@@ -170,6 +170,7 @@ fn main() -> Result<(), String> {
   let mut canvas = sdl_window
     .into_canvas()
     .accelerated()
+    .present_vsync()
     .build()
     .map_err(|e| e.to_string())?;
   canvas
@@ -211,33 +212,33 @@ fn main() -> Result<(), String> {
   let mut event_pump = sdl_context.event_pump()?;
   let mut reader_id = Write::<GameEventsChannel>::fetch(&world).register_reader();
   let mut slowdown_timer: Option<Duration> = None;
-  let dt = Duration::new(0, 1_000_000_000u32 / 120);
-  let frame_rate = Duration::new(0, 1_000_000_000u32 / 60);
+  let frame_dt = Duration::new(0, 1_000_000_000u32 / 60);
   let mut last_time = Instant::now();
 
   'running: loop {
-    for event in world.read_resource::<GameEventsChannel>().read(&mut reader_id) {
-      if let GameEvents::PlayerDeath(_) = event {
-        slowdown_timer = Some(Duration::from_secs_f32(0.0));
-      }
-    }
-
     let current_time = Instant::now();
     let mut frame_time = current_time - last_time;
     last_time = current_time;
 
     while frame_time.as_secs_f32() > 0.0 {
-      let delta_time = frame_time.min(dt);
+      let dt = std::cmp::min(frame_time, frame_dt);
+
+      for event in world.read_resource::<GameEventsChannel>().read(&mut reader_id) {
+        if let GameEvents::PlayerDeath(_) = event {
+          slowdown_timer = Some(Duration::from_secs_f32(0.0));
+        }
+      }
+
       if let Some(mut timer) = slowdown_timer.take() {
-        timer += delta_time;
+        timer += dt;
         if timer.as_secs_f32() <= 1.0 {
           let easing = ease_in_out_cubic(timer.as_secs_f32() / 1.0);
           let slow_amount = (1.0 - easing) * 0.25 + easing * 1.0;
-          *world.write_resource() = Duration::from_secs_f32(delta_time.as_secs_f32() * slow_amount);
+          *world.write_resource() = Duration::from_secs_f32(dt.as_secs_f32() * slow_amount);
           slowdown_timer.replace(timer);
         }
       } else {
-        *world.write_resource() = delta_time;
+        *world.write_resource() = dt;
       }
 
       for event in event_pump.poll_iter() {
@@ -261,12 +262,10 @@ fn main() -> Result<(), String> {
       dispatcher.dispatch(&world);
       world.maintain();
 
-      frame_time -= delta_time;
+      frame_time -= dt;
     }
 
     render::render(&mut canvas, Color::BLACK, &textures, world.system_data())?;
-
-    std::thread::sleep(frame_rate);
   }
 
   drop(reader_id);
