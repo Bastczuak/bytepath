@@ -106,7 +106,7 @@ impl Interpolation {
 #[derive(Component, Copy, Clone)]
 #[storage(DenseVecStorage)]
 pub struct Sprite {
-  pub z_index: usize,
+  pub z_index: u8,
   pub texture_idx: usize,
   pub rotation: f64,
   pub scale: f32,

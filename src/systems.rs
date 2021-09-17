@@ -15,6 +15,7 @@ use rand::{Rng, SeedableRng};
 use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
 use specs::prelude::*;
 use std::{collections::HashSet, f32::consts::PI, time::Duration};
+use crate::environment::{Z_INDEX_PLAYER, Z_INDEX_BOOST_TRAIL};
 
 #[derive(Default)]
 pub struct TrailEffectSystem {
@@ -107,14 +108,14 @@ impl<'a> System<'a> for TrailEffectSystem {
                 texture_idx: 5,
                 region: Rect::new(0, 0, width, height),
                 scale,
-                z_index: 20,
+                z_index: Z_INDEX_BOOST_TRAIL,
                 ..Default::default()
               },
               Sprite {
                 texture_idx: 5,
                 region: Rect::new(32, 0, width, height),
                 scale,
-                z_index: 20,
+                z_index: Z_INDEX_BOOST_TRAIL,
                 ..Default::default()
               },
             ],
@@ -414,7 +415,7 @@ impl<'a> System<'a> for PlayerSystem {
             .with(Sprite {
               texture_idx: 0,
               region: Rect::new(0, 0, 32, 32),
-              z_index: 10,
+              z_index: Z_INDEX_PLAYER,
               ..Default::default()
             })
             .build();
@@ -438,7 +439,7 @@ impl<'a> System<'a> for PlayerSystem {
       .with(Sprite {
         texture_idx: 0,
         region: Rect::new(0, 0, 32, 32),
-        z_index: 10,
+        z_index: Z_INDEX_PLAYER,
         ..Default::default()
       })
       .build();
