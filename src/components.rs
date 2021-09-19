@@ -171,3 +171,47 @@ pub struct LineParticle {
   pub y2: f32,
   pub time_to_live: f32,
 }
+
+#[derive(Component)]
+#[storage(DenseVecStorage)]
+pub struct Boost {
+  /// default 100.0
+  pub max_boost: f32,
+  /// default 100.0
+  pub boost: f32,
+  /// default None
+  pub cooldown: Option<f32>,
+  /// default 10.0
+  pub inc_amount: f32,
+  /// default 50.0
+  pub dec_amount: f32,
+  /// default Some(2.0)
+  pub cooldown_sec: Option<f32>,
+}
+
+impl Boost {
+  pub fn is_empty(&self) -> bool {
+    self.boost < 0.0
+  }
+
+  pub fn no_cooldown(&self) -> bool {
+    self.cooldown.is_none()
+  }
+
+  pub fn can_boost(&self) -> bool {
+    self.cooldown.is_none() && self.boost > 0.0
+  }
+}
+
+impl Default for Boost {
+  fn default() -> Self {
+    Self {
+      max_boost: 100.0,
+      boost: 100.0,
+      cooldown: None,
+      inc_amount: 10.0,
+      dec_amount: 50.0,
+      cooldown_sec: Some(2.0),
+    }
+  }
+}

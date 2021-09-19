@@ -1,9 +1,10 @@
 use crate::{
   components::{
-    Angle, Animation, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect, Sprite, TickEffect,
-    TrailEffect, Velocity,
+    Angle, Animation, Boost, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect, Sprite,
+    TickEffect, TrailEffect, Velocity,
   },
   easings::{ease_in_out_cubic, linear},
+  environment::{Z_INDEX_BOOST_TRAIL, Z_INDEX_PLAYER},
   resources::{
     Flash, GameEvents,
     GameEvents::{PlayerDeath, PlayerSpawn},
@@ -15,7 +16,6 @@ use rand::{Rng, SeedableRng};
 use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
 use specs::prelude::*;
 use std::{collections::HashSet, f32::consts::PI, time::Duration};
-use crate::environment::{Z_INDEX_PLAYER, Z_INDEX_BOOST_TRAIL};
 
 #[derive(Default)]
 pub struct TrailEffectSystem {
@@ -339,25 +339,38 @@ impl<'a> System<'a> for PlayerSystem {
     Read<'a, LazyUpdate>,
     Read<'a, HashSet<Keycode>>,
     Read<'a, Duration>,
-    Write<'a, GameEventsChannel>,
     ReadStorage<'a, Player>,
+    Write<'a, GameEventsChannel>,
     WriteStorage<'a, Sprite>,
     WriteStorage<'a, Velocity>,
     WriteStorage<'a, Position>,
     WriteStorage<'a, Angle>,
+    WriteStorage<'a, Boost>,
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, keycodes, time, mut events, players, mut sprites, mut velocities, mut positions, mut angles) =
-      data;
+    let (
+      entities,
+      lazy,
+      keycodes,
+      time,
+      players,
+      mut events,
+      mut sprites,
+      mut velocities,
+      mut positions,
+      mut angles,
+      mut boosts,
+    ) = data;
 
-    for (_, e, sprite, velocity, position, angle) in (
+    for (_, e, sprite, velocity, position, angle, boost) in (
       &players,
       &entities,
       &mut sprites,
       &mut velocities,
       &mut positions,
       &mut angles,
+      &mut boosts,
     )
       .join()
     {
@@ -366,12 +379,18 @@ impl<'a> System<'a> for PlayerSystem {
           Keycode::Left => angle.radians -= angle.velocity * time.as_secs_f32(),
           Keycode::Right => angle.radians += angle.velocity * time.as_secs_f32(),
           Keycode::Up => {
-            velocity.x *= 1.5;
-            velocity.y *= 1.5;
+            if boost.can_boost() {
+              velocity.x *= 1.5;
+              velocity.y *= 1.5;
+              boost.boost -= boost.dec_amount * time.as_secs_f32();
+            }
           }
           Keycode::Down => {
-            velocity.x *= 0.5;
-            velocity.y *= 0.5;
+            if boost.can_boost() {
+              velocity.x *= 0.5;
+              velocity.y *= 0.5;
+              boost.boost -= boost.dec_amount * time.as_secs_f32();
+            }
           }
           Keycode::D => {
             entities.delete(e).unwrap();
@@ -381,11 +400,23 @@ impl<'a> System<'a> for PlayerSystem {
         }
       }
 
+      if boost.is_empty() && boost.no_cooldown() {
+        boost.cooldown = boost.cooldown_sec;
+      } else {
+        if let Some(mut cooldown) = boost.cooldown.take() {
+          cooldown -= time.as_secs_f32();
+          if cooldown > 0.0 {
+            boost.cooldown.replace(cooldown);
+          }
+        }
+      }
+
       sprite.rotation = (angle.radians * 180.0 / PI) as f64;
       position.x += velocity.x * time.as_secs_f32() * f32::cos(angle.radians);
       position.y += velocity.y * time.as_secs_f32() * f32::sin(angle.radians);
       velocity.x = velocity.base_x;
       velocity.y = velocity.base_y;
+      boost.boost = boost.max_boost.min(boost.boost + boost.inc_amount * time.as_secs_f32());
 
       let sprite_offset_x = sprite.width() / 2.0;
       let sprite_offset_y = sprite.height() / 2.0;
@@ -418,6 +449,7 @@ impl<'a> System<'a> for PlayerSystem {
               z_index: Z_INDEX_PLAYER,
               ..Default::default()
             })
+            .with(Boost::default())
             .build();
           events.single_write(PlayerSpawn);
         }
@@ -442,6 +474,7 @@ impl<'a> System<'a> for PlayerSystem {
         z_index: Z_INDEX_PLAYER,
         ..Default::default()
       })
+      .with(Boost::default())
       .build();
   }
 }
