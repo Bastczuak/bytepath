@@ -37,6 +37,7 @@ impl<'a> System<'a> for TrailEffectSystem {
     ReadStorage<'a, Angle>,
     ReadStorage<'a, Player>,
     ReadStorage<'a, TrailEffect>,
+    ReadStorage<'a, Boost>,
   );
 
   fn run(&mut self, data: Self::SystemData) {
@@ -52,6 +53,7 @@ impl<'a> System<'a> for TrailEffectSystem {
       angles,
       players,
       effects,
+      boosts,
     ) = data;
 
     // don't process any effects if there is no player entity and make sure to clean up existing ones.
@@ -63,10 +65,12 @@ impl<'a> System<'a> for TrailEffectSystem {
       return;
     }
 
-    let is_blue_boost_trail = keycodes.contains(&Keycode::Up);
+    let (_, player_boost) = (&players, &boosts).join().collect::<Vec<_>>()[0];
+    let is_blue_boost_trail =
+      (keycodes.contains(&Keycode::Up) || keycodes.contains(&Keycode::Down)) && player_boost.can_boost();
 
     for (_, e, interpolation, animation, sprite) in
-      (&effects, &entities, &mut interpolations, &mut animations, &mut sprites).join()
+    (&effects, &entities, &mut interpolations, &mut animations, &mut sprites).join()
     {
       let (values, finished) = interpolation.eval(time.as_secs_f32(), linear);
       // TODO: The Sprite struct is copied every single frame but it should just get toggled
@@ -297,7 +301,11 @@ impl<'a> System<'a> for ShakeSystem {
       fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
         move |n| {
           let n = n as usize;
-          if n >= samples.len() { 0.0 } else { samples[n] }
+          if n >= samples.len() {
+            0.0
+          } else {
+            samples[n]
+          }
         }
       }
       let noise_x = noise(&self.samples_x);
