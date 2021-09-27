@@ -56,33 +56,40 @@ impl<'a> System<'a> for TrailEffectSystem {
       boosts,
     ) = data;
 
-    // don't process any effects if there is no player entity and make sure to clean up existing ones.
-    if (&players, &entities).join().count() == 0 {
-      for (_, e) in (&effects, &entities).join() {
-        entities.delete(e).unwrap();
-        self.timer.replace(0.01);
-      }
-      return;
-    }
-
-    let (_, player_boost) = (&players, &boosts).join().collect::<Vec<_>>()[0];
-    let is_blue_boost_trail =
-      (keycodes.contains(&Keycode::Up) || keycodes.contains(&Keycode::Down)) && player_boost.can_boost();
+    let player_boost = (&players, &boosts)
+      .join()
+      .collect::<Vec<_>>()
+      .get(0)
+      .map_or(None, |(_, boost)| Some(*boost));
 
     for (_, e, interpolation, animation, sprite) in
     (&effects, &entities, &mut interpolations, &mut animations, &mut sprites).join()
     {
       let (values, finished) = interpolation.eval(time.as_secs_f32(), linear);
-      // TODO: The Sprite struct is copied every single frame but it should just get toggled
-      if is_blue_boost_trail {
-        *sprite = animation.frames[1];
+
+      if let Some(player_boost) = player_boost {
+        if (keycodes.contains(&Keycode::Up) || keycodes.contains(&Keycode::Down)) && player_boost.can_boost() {
+          // TODO: The Sprite struct is copied every single frame but it should just get toggled
+          *sprite = animation.frames[1];
+        } else {
+          // TODO: The Sprite struct is copied every single frame but it should just get toggled
+          *sprite = animation.frames[0];
+        }
       } else {
+        // TODO: The Sprite struct is copied every single frame but it should just get toggled
         *sprite = animation.frames[0];
       }
+
       sprite.scale = values[0];
       if finished {
         entities.delete(e).unwrap();
       }
+    }
+
+    // don't spawn new effect if there is no player
+    if (&players, &entities).join().count() == 0 {
+      self.timer.replace(0.01);
+      return;
     }
 
     if let Some(mut timer) = self.timer.take() {
@@ -259,6 +266,7 @@ impl<'a> System<'a> for FlashSystem {
 pub struct ShakeSystem {
   duration: f32,
   frequency: f32,
+  amplitude: f32,
   samples_x: Vec<f32>,
   samples_y: Vec<f32>,
   time: f32,
@@ -301,17 +309,13 @@ impl<'a> System<'a> for ShakeSystem {
       fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
         move |n| {
           let n = n as usize;
-          if n >= samples.len() {
-            0.0
-          } else {
-            samples[n]
-          }
+          if n >= samples.len() { 0.0 } else { samples[n] }
         }
       }
       let noise_x = noise(&self.samples_x);
       let noise_y = noise(&self.samples_y);
       let amplitude = |noise_fn: &dyn Fn(f32) -> f32| -> i32 {
-        ((noise_fn(s0) + (s - s0) * (noise_fn(s1) - noise_fn(s0))) * k * 16.0) as i32
+        ((noise_fn(s0) + (s - s0) * (noise_fn(s1) - noise_fn(s0))) * k * self.amplitude) as i32
       };
 
       shake.x = amplitude(&noise_x);
@@ -321,8 +325,9 @@ impl<'a> System<'a> for ShakeSystem {
 
   fn setup(&mut self, world: &mut World) {
     Self::SystemData::setup(world);
-    self.duration = 0.75;
-    self.frequency = 40.0;
+    self.duration = 0.4;
+    self.frequency = 60.0;
+    self.amplitude = 6.0;
     let sample_count = (self.duration * self.frequency) as usize;
     let mut rng = rand::rngs::SmallRng::from_entropy();
     self.samples_x = (0..sample_count).map(|_| rng.gen_range(0.0..1.0) * 2.0 - 1.0).collect();

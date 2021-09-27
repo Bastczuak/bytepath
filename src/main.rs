@@ -7,7 +7,10 @@ mod systems;
 
 use crate::{
   easings::ease_in_out_cubic,
-  environment::{RGB_COLOR_BOOST, RGB_COLOR_NON_BOOST, SCREEN_HEIGHT, SCREEN_WIDTH},
+  environment::{
+    RGB_COLOR_AMMUNITION, RGB_COLOR_BACKGROUND, RGB_COLOR_BOOST, RGB_COLOR_NON_BOOST, SCREEN_HEIGHT, SCREEN_WIDTH,
+    SLOW_DOWN_DURATION_ON_DEATH,
+  },
   resources::{GameEvents, GameEventsChannel},
   systems::{
     FlashSystem, PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem,
@@ -231,9 +234,9 @@ fn main() -> Result<(), String> {
 
       if let Some(mut timer) = slowdown_timer.take() {
         timer += dt;
-        if timer.as_secs_f32() <= 1.0 {
-          let easing = ease_in_out_cubic(timer.as_secs_f32() / 1.0);
-          let slow_amount = (1.0 - easing) * 0.25 + easing * 1.0;
+        if timer.as_secs_f32() <= SLOW_DOWN_DURATION_ON_DEATH {
+          let easing = ease_in_out_cubic(timer.as_secs_f32() / SLOW_DOWN_DURATION_ON_DEATH);
+          let slow_amount = (1.0 - easing) * 0.15 + easing * 1.0;
           *world.write_resource() = Duration::from_secs_f32(dt.as_secs_f32() * slow_amount);
           slowdown_timer.replace(timer);
         }
@@ -265,7 +268,12 @@ fn main() -> Result<(), String> {
       frame_time -= dt;
     }
 
-    render::render(&mut canvas, Color::BLACK, &textures, world.system_data())?;
+    render::render(
+      &mut canvas,
+      Color::from(RGB_COLOR_BACKGROUND),
+      &textures,
+      world.system_data(),
+    )?;
   }
 
   drop(reader_id);
