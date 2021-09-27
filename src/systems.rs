@@ -60,7 +60,7 @@ impl<'a> System<'a> for TrailEffectSystem {
       .join()
       .collect::<Vec<_>>()
       .get(0)
-      .map_or(None, |(_, boost)| Some(*boost));
+      .map(|(_, boost)| *boost);
 
     for (_, e, interpolation, animation, sprite) in
     (&effects, &entities, &mut interpolations, &mut animations, &mut sprites).join()
@@ -415,12 +415,10 @@ impl<'a> System<'a> for PlayerSystem {
 
       if boost.is_empty() && boost.no_cooldown() {
         boost.cooldown = boost.cooldown_sec;
-      } else {
-        if let Some(mut cooldown) = boost.cooldown.take() {
-          cooldown -= time.as_secs_f32();
-          if cooldown > 0.0 {
-            boost.cooldown.replace(cooldown);
-          }
+      } else if let Some(mut cooldown) = boost.cooldown.take() {
+        cooldown -= time.as_secs_f32();
+        if cooldown > 0.0 {
+          boost.cooldown.replace(cooldown);
         }
       }
 
