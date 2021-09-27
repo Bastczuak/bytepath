@@ -22,6 +22,10 @@ pub struct TrailEffect;
 #[storage(NullStorage)]
 pub struct Projectile;
 
+#[derive(Component, Default)]
+#[storage(NullStorage)]
+pub struct Ammunition;
+
 #[derive(Component, Default, Copy, Clone)]
 #[storage(DenseVecStorage)]
 pub struct Position {

@@ -1,7 +1,7 @@
 use crate::{
   components::{
-    Angle, Animation, Boost, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect, Sprite,
-    TickEffect, TrailEffect, Velocity,
+    Ammunition, Angle, Animation, Boost, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect,
+    Sprite, TickEffect, TrailEffect, Velocity,
   },
   easings::{ease_in_out_cubic, linear},
   environment::{Z_INDEX_BOOST_TRAIL, Z_INDEX_PLAYER},
@@ -16,6 +16,113 @@ use rand::{Rng, SeedableRng};
 use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
 use specs::prelude::*;
 use std::{collections::HashSet, f32::consts::PI, time::Duration};
+
+#[derive(Default)]
+pub struct AmmunitionSystem {
+  rng: Option<rand::rngs::SmallRng>,
+}
+
+impl<'a> System<'a> for AmmunitionSystem {
+  #[allow(clippy::type_complexity)]
+  type SystemData = (
+    Entities<'a>,
+    Read<'a, LazyUpdate>,
+    Read<'a, HashSet<Keycode>>,
+    Read<'a, Duration>,
+    ReadStorage<'a, Player>,
+    ReadStorage<'a, Ammunition>,
+    ReadStorage<'a, Angle>,
+    WriteStorage<'a, Sprite>,
+    WriteStorage<'a, Position>,
+    WriteStorage<'a, Velocity>,
+  );
+
+  fn run(&mut self, data: Self::SystemData) {
+    let (entities, lazy, keycodes, time, players, ammunition, angles, mut sprites, mut positions, mut velocities) =
+      data;
+
+    for keycode in keycodes.iter() {
+      if keycode == &Keycode::S {
+        let rng = self
+          .rng
+          .as_mut()
+          .expect("rng Should not be None! Did you forget to initialize in setup()?");
+        lazy
+          .create_entity(&entities)
+          .with(Ammunition)
+          .with(Sprite {
+            texture_idx: 6,
+            region: Rect::new(0, 0, 6, 6),
+            ..Default::default()
+          })
+          .with(Position {
+            x: rng.gen_range(0.0..SCREEN_WIDTH as f32),
+            y: rng.gen_range(0.0..SCREEN_HEIGHT as f32),
+          })
+          .with(Velocity::new(rng.gen_range(10.0..20.0)))
+          .with(Angle {
+            radians: rng.gen_range(0.0..2.0) * PI,
+            velocity: rng.gen_range(-4.0..4.0) * PI,
+          })
+          .build();
+      }
+    }
+
+    fn normalize((x, y): (f32, f32)) -> (f32, f32) {
+      let length = f32::sqrt(x * x + y * y);
+      (x / length, y / length)
+    }
+
+    let player_pos = (&players, &positions)
+      .join()
+      .collect::<Vec<_>>()
+      .get(0)
+      .map(|(_, pos)| **pos);
+
+    for (_, e, angle, sprite, position, velocity) in (
+      &ammunition,
+      &entities,
+      &angles,
+      &mut sprites,
+      &mut positions,
+      &mut velocities,
+    )
+      .join()
+    {
+      sprite.rotation += ((angle.velocity * 180.0 / PI) * time.as_secs_f32()) as f64;
+
+      if let Some(player_pos) = player_pos {
+        let projectile_heading = normalize((velocity.x, velocity.y));
+        let angle = f32::atan2(player_pos.y - position.y, player_pos.x - position.x);
+        let to_target_heading = normalize((f32::cos(angle), f32::sin(angle)));
+        let final_heading = normalize((
+          projectile_heading.0 + 0.1 * to_target_heading.0,
+          projectile_heading.1 + 0.1 * to_target_heading.1,
+        ));
+        velocity.x = velocity.base_x * final_heading.0;
+        velocity.y = velocity.base_y * final_heading.1;
+      }
+
+      position.x += velocity.x * time.as_secs_f32() * f32::cos(angle.radians);
+      position.y += velocity.y * time.as_secs_f32() * f32::sin(angle.radians);
+
+      let sprite_offset_x = sprite.width() / 2.0;
+      let sprite_offset_y = sprite.height() / 2.0;
+      if (position.x + sprite_offset_x) < 0.0
+        || (position.x - sprite_offset_x) > SCREEN_WIDTH as f32
+        || (position.y + sprite_offset_y) < 0.0
+        || (position.y - sprite_offset_y) > SCREEN_HEIGHT as f32
+      {
+        entities.delete(e).unwrap();
+      }
+    }
+  }
+
+  fn setup(&mut self, world: &mut World) {
+    Self::SystemData::setup(world);
+    self.rng = Some(rand::rngs::SmallRng::from_entropy());
+  }
+}
 
 #[derive(Default)]
 pub struct TrailEffectSystem {

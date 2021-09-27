@@ -13,8 +13,8 @@ use crate::{
   },
   resources::{GameEvents, GameEventsChannel},
   systems::{
-    FlashSystem, PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem,
-    TickEffectSystem, TrailEffectSystem,
+    AmmunitionSystem, FlashSystem, PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem,
+    ShakeSystem, ShootingSystem, TickEffectSystem, TrailEffectSystem,
   },
 };
 use sdl2::{
@@ -156,6 +156,26 @@ fn create_trail_effect_texture<'a, 'b>(
   Ok(texture)
 }
 
+fn create_ammunition_texture<'a, 'b>(
+  texture_creator: &'a TextureCreator<WindowContext>,
+  canvas: &'b mut WindowCanvas,
+) -> Result<Texture<'a>, String> {
+  let mut texture = texture_creator
+    .create_texture_target(texture_creator.default_pixel_format(), 6, 6)
+    .map_err(|e| e.to_string())?;
+  canvas
+    .with_texture_canvas(&mut texture, |texture_canvas| {
+      texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
+      texture_canvas.clear();
+      texture_canvas.set_draw_color(Color::from(RGB_COLOR_AMMUNITION));
+      texture_canvas.draw_rect(Rect::new(0, 0, 6, 6)).unwrap();
+    })
+    .map_err(|e| e.to_string())?;
+  texture.set_blend_mode(BlendMode::Blend);
+
+  Ok(texture)
+}
+
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
   let sdl_video = sdl_context.video()?;
@@ -191,6 +211,7 @@ fn main() -> Result<(), String> {
     create_projectile_death_texture(&texture_creator, &mut canvas)?,
     create_tick_effect_texture(&texture_creator, &mut canvas)?,
     create_trail_effect_texture(&texture_creator, &mut canvas)?,
+    create_ammunition_texture(&texture_creator, &mut canvas)?,
   ];
 
   let mut dispatcher = DispatcherBuilder::new()
@@ -207,6 +228,7 @@ fn main() -> Result<(), String> {
       &["projectile_system"],
     )
     .with(PlayerDeathSystem::default(), "player_death_system", &["player_system"])
+    .with(AmmunitionSystem::default(), "ammunition_system", &["player_system"])
     .build();
   let mut world = World::new();
   dispatcher.setup(&mut world);
