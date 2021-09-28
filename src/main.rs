@@ -8,13 +8,13 @@ mod systems;
 use crate::{
   easings::ease_in_out_cubic,
   environment::{
-    RGB_COLOR_AMMUNITION, RGB_COLOR_BACKGROUND, RGB_COLOR_BOOST, RGB_COLOR_NON_BOOST, SCREEN_HEIGHT, SCREEN_WIDTH,
-    SLOW_DOWN_DURATION_ON_DEATH,
+    RGB_COLOR_AMMUNITION, RGB_COLOR_BACKGROUND, RGB_COLOR_BOOST, RGB_COLOR_DEATH, RGB_COLOR_NON_BOOST, SCREEN_HEIGHT,
+    SCREEN_WIDTH, SLOW_DOWN_DURATION_ON_DEATH,
   },
   resources::{GameEvents, GameEventsChannel},
   systems::{
-    AmmunitionSystem, FlashSystem, PlayerDeathSystem, PlayerSystem, ProjectileDeathSystem, ProjectileSystem,
-    ShakeSystem, ShootingSystem, TickEffectSystem, TrailEffectSystem,
+    AmmunitionDeathSystem, AmmunitionSystem, FlashSystem, LineParticleSystem, PlayerSystem, ProjectileDeathSystem,
+    ProjectileSystem, ShakeSystem, ShootingSystem, TickEffectSystem, TrailEffectSystem,
   },
 };
 use sdl2::{
@@ -22,7 +22,6 @@ use sdl2::{
   gfx::primitives::DrawRenderer,
   keyboard::Keycode,
   pixels::Color,
-  rect::Rect,
   render::{BlendMode, Texture, TextureCreator, WindowCanvas},
   video::WindowContext,
 };
@@ -62,8 +61,7 @@ fn create_shooting_effect_texture<'a, 'b>(
     .with_texture_canvas(&mut texture, |texture_canvas| {
       texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
       texture_canvas.clear();
-      texture_canvas.set_draw_color(Color::WHITE);
-      texture_canvas.fill_rect(Rect::new(0, 0, 8, 8)).unwrap();
+      texture_canvas.box_(0, 0, 8, 8, Color::WHITE).unwrap();
     })
     .map_err(|e| e.to_string())?;
   texture.set_blend_mode(BlendMode::Blend);
@@ -102,9 +100,8 @@ fn create_projectile_death_texture<'a, 'b>(
       texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
       texture_canvas.clear();
       texture_canvas.set_draw_color(Color::WHITE);
-      texture_canvas.fill_rect(Rect::new(0, 0, 6, 3)).unwrap();
-      texture_canvas.set_draw_color(Color::RGB(241, 103, 69));
-      texture_canvas.fill_rect(Rect::new(0, 3, 6, 6)).unwrap();
+      texture_canvas.box_(0, 0, 6, 3, Color::WHITE).unwrap();
+      texture_canvas.box_(0, 3, 6, 6, Color::from(RGB_COLOR_DEATH)).unwrap();
     })
     .map_err(|e| e.to_string())?;
   texture.set_blend_mode(BlendMode::Blend);
@@ -123,8 +120,7 @@ fn create_tick_effect_texture<'a, 'b>(
     .with_texture_canvas(&mut texture, |texture_canvas| {
       texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
       texture_canvas.clear();
-      texture_canvas.set_draw_color(Color::WHITE);
-      texture_canvas.fill_rect(Rect::new(0, 0, 48, 23)).unwrap();
+      texture_canvas.box_(0, 0, 48, 23, Color::WHITE).unwrap();
     })
     .map_err(|e| e.to_string())?;
   texture.set_blend_mode(BlendMode::Blend);
@@ -161,14 +157,19 @@ fn create_ammunition_texture<'a, 'b>(
   canvas: &'b mut WindowCanvas,
 ) -> Result<Texture<'a>, String> {
   let mut texture = texture_creator
-    .create_texture_target(texture_creator.default_pixel_format(), 6, 6)
+    .create_texture_target(texture_creator.default_pixel_format(), 18, 6)
     .map_err(|e| e.to_string())?;
   canvas
     .with_texture_canvas(&mut texture, |texture_canvas| {
       texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
       texture_canvas.clear();
-      texture_canvas.set_draw_color(Color::from(RGB_COLOR_AMMUNITION));
-      texture_canvas.draw_rect(Rect::new(0, 0, 6, 6)).unwrap();
+      texture_canvas
+        .rectangle(0, 0, 6, 6, Color::from(RGB_COLOR_AMMUNITION))
+        .unwrap();
+      texture_canvas.box_(6, 0, 12, 6, Color::WHITE).unwrap();
+      texture_canvas
+        .box_(12, 0, 18, 6, Color::from(RGB_COLOR_AMMUNITION))
+        .unwrap();
     })
     .map_err(|e| e.to_string())?;
   texture.set_blend_mode(BlendMode::Blend);
@@ -227,8 +228,17 @@ fn main() -> Result<(), String> {
       "projectile_death_system",
       &["projectile_system"],
     )
-    .with(PlayerDeathSystem::default(), "player_death_system", &["player_system"])
     .with(AmmunitionSystem::default(), "ammunition_system", &["player_system"])
+    .with(
+      AmmunitionDeathSystem,
+      "ammunition_death_system",
+      &["player_system", "ammunition_system"],
+    )
+    .with(
+      LineParticleSystem::default(),
+      "line_particle_system",
+      &["player_system", "ammunition_death_system"],
+    )
     .build();
   let mut world = World::new();
   dispatcher.setup(&mut world);

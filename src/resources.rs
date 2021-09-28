@@ -3,6 +3,7 @@ use specs::shrev::EventChannel;
 
 pub enum GameEvents {
   PlayerDeath(Position),
+  AmmunitionDeath(Position),
   PlayerSpawn,
   ProjectileDeath(Position),
 }

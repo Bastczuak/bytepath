@@ -4,7 +4,7 @@ use crate::{
     Sprite, TickEffect, TrailEffect, Velocity,
   },
   easings::{ease_in_out_cubic, linear},
-  environment::{Z_INDEX_BOOST_TRAIL, Z_INDEX_PLAYER},
+  environment::{RGB_COLOR_AMMUNITION, Z_INDEX_BOOST_TRAIL, Z_INDEX_PLAYER},
   resources::{
     Flash, GameEvents,
     GameEvents::{PlayerDeath, PlayerSpawn},
@@ -797,6 +797,78 @@ impl<'a> System<'a> for ProjectileSystem {
   }
 }
 
+pub struct AmmunitionDeathSystem;
+
+impl<'a> System<'a> for AmmunitionDeathSystem {
+  #[allow(clippy::type_complexity)]
+  type SystemData = (
+    Entities<'a>,
+    Read<'a, LazyUpdate>,
+    Read<'a, Duration>,
+    Write<'a, GameEventsChannel>,
+    ReadStorage<'a, Ammunition>,
+    ReadStorage<'a, Player>,
+    ReadStorage<'a, Position>,
+    WriteStorage<'a, Sprite>,
+    WriteStorage<'a, Animation>,
+  );
+
+  fn run(&mut self, data: Self::SystemData) {
+    let (entities, lazy, time, mut events, ammunition, players, positions, mut sprites, mut animations) = data;
+
+    for (_, e, sprite, animation) in (&ammunition, &entities, &mut sprites, &mut animations).join() {
+      animation.time += time.as_secs_f32();
+
+      if animation.time >= 0.15 {
+        entities.delete(e).unwrap();
+        continue;
+      }
+
+      if animation.time >= 0.1 {
+        *sprite = animation.frames[1];
+      }
+    }
+
+    for (_, p_pos, p_sprite) in (&players, &positions, &sprites).join() {
+      for (_, e, a_pos, a_sprite, ()) in (&ammunition, &entities, &positions, &sprites, !&animations).join() {
+        let dx = a_pos.x - p_pos.x;
+        let dy = a_pos.y - p_pos.y;
+        let distance = f32::sqrt(dx * dx + dy * dy);
+
+        if distance < (a_sprite.width() + p_sprite.width()) / 2.0 {
+          entities.delete(e).unwrap();
+          events.single_write(GameEvents::AmmunitionDeath(*a_pos));
+          lazy
+            .create_entity(&entities)
+            .with(*a_pos)
+            .with(Ammunition)
+            .with(Sprite {
+              region: Rect::new(6, 0, 6, 6),
+              scale: 1.15,
+              ..*a_sprite
+            })
+            .with(Animation {
+              frames: vec![
+                Sprite {
+                  region: Rect::new(6, 0, 6, 6),
+                  scale: 1.15,
+                  ..*a_sprite
+                },
+                Sprite {
+                  region: Rect::new(12, 0, 6, 6),
+                  scale: 1.15,
+                  ..*a_sprite
+                },
+              ],
+              ..Default::default()
+            })
+            .build();
+        }
+      }
+    }
+  }
+}
+
 #[derive(Default)]
 pub struct ProjectileDeathSystem {
   reader_id: Option<ReaderId<GameEvents>>,
@@ -902,12 +974,12 @@ impl<'a> System<'a> for ProjectileDeathSystem {
 }
 
 #[derive(Default)]
-pub struct PlayerDeathSystem {
+pub struct LineParticleSystem {
   reader_id: Option<ReaderId<GameEvents>>,
   rng: Option<rand::rngs::SmallRng>,
 }
 
-impl<'a> System<'a> for PlayerDeathSystem {
+impl<'a> System<'a> for LineParticleSystem {
   #[allow(clippy::type_complexity)]
   type SystemData = (
     Entities<'a>,
@@ -950,37 +1022,74 @@ impl<'a> System<'a> for PlayerDeathSystem {
         .as_mut()
         .expect("reader_id Should not be None! Did you forget to initialize in setup()?"),
     ) {
-      if let PlayerDeath(pos) = event {
-        let rng = self
-          .rng
-          .as_mut()
-          .expect("rng Should not be None! Did you forget to initialize in setup()?");
-        for _ in 0..16 {
-          let length = rng.gen_range(2.0..8.0);
-          let time_to_live = rng.gen_range(0.3..0.5);
-          let velocity = rng.gen_range(75.0..150.0);
-          let radians = rng.gen_range(0.0..2.0 * PI);
-          let width = 3.0;
-          lazy
-            .create_entity(&entities)
-            .with(Angle { radians, velocity: 0.0 })
-            .with(Velocity::new(velocity))
-            .with(Interpolation::new(
-              vec![(velocity, 0.0), (length, 0.0), (width, 1.0)], // can't tween the width to 0 because its not allowed by gfx thickline
-              time_to_live,
-            ))
-            .with(LineParticle {
-              width,
-              color: Color::WHITE,
-              length,
-              x1: pos.x,
-              y1: pos.y,
-              x2: pos.x + length * f32::cos(radians),
-              y2: pos.y + length * f32::sin(radians),
-              time_to_live,
-            })
-            .build();
+      match event {
+        PlayerDeath(pos) => {
+          let rng = self
+            .rng
+            .as_mut()
+            .expect("rng Should not be None! Did you forget to initialize in setup()?");
+          for _ in 0..16 {
+            let length = rng.gen_range(2.0..8.0);
+            let time_to_live = rng.gen_range(0.3..0.5);
+            let velocity = rng.gen_range(75.0..150.0);
+            let radians = rng.gen_range(0.0..2.0 * PI);
+            let width = 3.0;
+            lazy
+              .create_entity(&entities)
+              .with(Angle { radians, velocity: 0.0 })
+              .with(Velocity::new(velocity))
+              .with(Interpolation::new(
+                // can't tween the width to 0 because its not allowed by gfx thickline
+                vec![(velocity, 0.0), (length, 0.0), (width, 1.0)],
+                time_to_live,
+              ))
+              .with(LineParticle {
+                width,
+                color: Color::WHITE,
+                length,
+                x1: pos.x,
+                y1: pos.y,
+                x2: pos.x + length * f32::cos(radians),
+                y2: pos.y + length * f32::sin(radians),
+                time_to_live,
+              })
+              .build();
+          }
         }
+        GameEvents::AmmunitionDeath(pos) => {
+          let rng = self
+            .rng
+            .as_mut()
+            .expect("rng Should not be None! Did you forget to initialize in setup()?");
+          for _ in 0..rng.gen_range(3..7) {
+            let length = 5.0;
+            let time_to_live = rng.gen_range(0.2..0.4);
+            let velocity = rng.gen_range(75.0..150.0);
+            let radians = rng.gen_range(0.0..2.0 * PI);
+            let width = 3.0;
+            lazy
+              .create_entity(&entities)
+              .with(Angle { radians, velocity: 0.0 })
+              .with(Velocity::new(velocity))
+              .with(Interpolation::new(
+                // can't tween the width to 0 because its not allowed by gfx thickline
+                vec![(velocity, 0.0), (length, 0.0), (width, 1.0)],
+                time_to_live,
+              ))
+              .with(LineParticle {
+                width,
+                color: Color::from(RGB_COLOR_AMMUNITION),
+                length,
+                x1: pos.x,
+                y1: pos.y,
+                x2: pos.x + length * f32::cos(radians),
+                y2: pos.y + length * f32::sin(radians),
+                time_to_live,
+              })
+              .build();
+          }
+        }
+        _ => {}
       }
     }
   }
