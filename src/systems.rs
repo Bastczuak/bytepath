@@ -170,7 +170,7 @@ impl<'a> System<'a> for TrailEffectSystem {
       .map(|(_, boost)| *boost);
 
     for (_, e, interpolation, animation, sprite) in
-    (&effects, &entities, &mut interpolations, &mut animations, &mut sprites).join()
+      (&effects, &entities, &mut interpolations, &mut animations, &mut sprites).join()
     {
       let (values, finished) = interpolation.eval(time.as_secs_f32(), linear);
 
