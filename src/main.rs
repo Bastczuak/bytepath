@@ -218,16 +218,12 @@ fn main() -> Result<(), String> {
   let mut dispatcher = DispatcherBuilder::new()
     .with(ShakeSystem::default(), "shake_system", &[])
     .with(FlashSystem::default(), "flash_system", &[])
+    .with(LineParticleSystem::default(), "line_particle_system", &[])
     .with(PlayerSystem, "player_system", &[])
     .with(ShootingSystem::default(), "shooting_system", &["player_system"])
     .with(ProjectileSystem::default(), "projectile_system", &["player_system"])
     .with(TickEffectSystem::default(), "tick_effect_system", &["player_system"])
     .with(TrailEffectSystem::default(), "trail_effect_system", &["player_system"])
-    .with(
-      ProjectileDeathSystem::default(),
-      "projectile_death_system",
-      &["projectile_system"],
-    )
     .with(AmmunitionSystem::default(), "ammunition_system", &["player_system"])
     .with(
       AmmunitionDeathSystem,
@@ -235,9 +231,9 @@ fn main() -> Result<(), String> {
       &["player_system", "ammunition_system"],
     )
     .with(
-      LineParticleSystem::default(),
-      "line_particle_system",
-      &["player_system", "ammunition_death_system"],
+      ProjectileDeathSystem::default(),
+      "projectile_death_system",
+      &["projectile_system"],
     )
     .build();
   let mut world = World::new();

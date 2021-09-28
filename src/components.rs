@@ -42,7 +42,7 @@ pub struct Angle {
 
 impl Default for Angle {
   fn default() -> Self {
-    Angle {
+    Self {
       radians: -std::f32::consts::PI / 2.0,
       velocity: 1.66 * std::f32::consts::PI,
     }
@@ -60,7 +60,7 @@ pub struct Velocity {
 
 impl Velocity {
   pub fn new(value: f32) -> Self {
-    Velocity {
+    Self {
       base_x: value,
       base_y: value,
       x: value,
@@ -178,7 +178,7 @@ pub struct LineParticle {
 
 #[derive(Component)]
 #[storage(DenseVecStorage)]
-pub struct Boost {
+pub struct BoostRes {
   /// default 100.0
   pub max_boost: f32,
   /// default 100.0
@@ -193,7 +193,7 @@ pub struct Boost {
   pub cooldown_sec: Option<f32>,
 }
 
-impl Boost {
+impl BoostRes {
   pub fn is_empty(&self) -> bool {
     self.boost < 0.0
   }
@@ -207,7 +207,7 @@ impl Boost {
   }
 }
 
-impl Default for Boost {
+impl Default for BoostRes {
   fn default() -> Self {
     Self {
       max_boost: 100.0,
@@ -216,6 +216,24 @@ impl Default for Boost {
       inc_amount: 10.0,
       dec_amount: 50.0,
       cooldown_sec: Some(2.0),
+    }
+  }
+}
+
+#[derive(Component)]
+#[storage(DenseVecStorage)]
+pub struct AmmunitionRes {
+  pub max_ammunition: u8,
+  pub ammunition: u8,
+  pub inc_amount: u8,
+}
+
+impl Default for AmmunitionRes {
+  fn default() -> Self {
+    Self {
+      max_ammunition: 100,
+      ammunition: 0,
+      inc_amount: 5,
     }
   }
 }

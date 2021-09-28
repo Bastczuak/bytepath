@@ -1,7 +1,7 @@
 use crate::{
   components::{
-    Ammunition, Angle, Animation, Boost, Interpolation, LineParticle, Player, Position, Projectile, ShootingEffect,
-    Sprite, TickEffect, TrailEffect, Velocity,
+    Ammunition, AmmunitionRes, Angle, Animation, BoostRes, Interpolation, LineParticle, Player, Position, Projectile,
+    ShootingEffect, Sprite, TickEffect, TrailEffect, Velocity,
   },
   easings::{ease_in_out_cubic, linear},
   environment::{RGB_COLOR_AMMUNITION, Z_INDEX_BOOST_TRAIL, Z_INDEX_PLAYER},
@@ -144,7 +144,7 @@ impl<'a> System<'a> for TrailEffectSystem {
     ReadStorage<'a, Angle>,
     ReadStorage<'a, Player>,
     ReadStorage<'a, TrailEffect>,
-    ReadStorage<'a, Boost>,
+    ReadStorage<'a, BoostRes>,
   );
 
   fn run(&mut self, data: Self::SystemData) {
@@ -460,12 +460,13 @@ impl<'a> System<'a> for PlayerSystem {
     Read<'a, HashSet<Keycode>>,
     Read<'a, Duration>,
     ReadStorage<'a, Player>,
+    ReadStorage<'a, AmmunitionRes>,
     Write<'a, GameEventsChannel>,
     WriteStorage<'a, Sprite>,
     WriteStorage<'a, Velocity>,
     WriteStorage<'a, Position>,
     WriteStorage<'a, Angle>,
-    WriteStorage<'a, Boost>,
+    WriteStorage<'a, BoostRes>,
   );
 
   fn run(&mut self, data: Self::SystemData) {
@@ -475,6 +476,7 @@ impl<'a> System<'a> for PlayerSystem {
       keycodes,
       time,
       players,
+      _,
       mut events,
       mut sprites,
       mut velocities,
@@ -567,7 +569,8 @@ impl<'a> System<'a> for PlayerSystem {
               z_index: Z_INDEX_PLAYER,
               ..Default::default()
             })
-            .with(Boost::default())
+            .with(BoostRes::default())
+            .with(AmmunitionRes::default())
             .build();
           events.single_write(PlayerSpawn);
         }
@@ -592,7 +595,8 @@ impl<'a> System<'a> for PlayerSystem {
         z_index: Z_INDEX_PLAYER,
         ..Default::default()
       })
-      .with(Boost::default())
+      .with(BoostRes::default())
+      .with(AmmunitionRes::default())
       .build();
   }
 }
@@ -811,10 +815,22 @@ impl<'a> System<'a> for AmmunitionDeathSystem {
     ReadStorage<'a, Position>,
     WriteStorage<'a, Sprite>,
     WriteStorage<'a, Animation>,
+    WriteStorage<'a, AmmunitionRes>,
   );
 
   fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, time, mut events, ammunition, players, positions, mut sprites, mut animations) = data;
+    let (
+      entities,
+      lazy,
+      time,
+      mut events,
+      ammunition,
+      players,
+      positions,
+      mut sprites,
+      mut animations,
+      mut ammunition_res,
+    ) = data;
 
     for (_, e, sprite, animation) in (&ammunition, &entities, &mut sprites, &mut animations).join() {
       animation.time += time.as_secs_f32();
@@ -829,7 +845,7 @@ impl<'a> System<'a> for AmmunitionDeathSystem {
       }
     }
 
-    for (_, p_pos, p_sprite) in (&players, &positions, &sprites).join() {
+    for (_, p_pos, p_sprite, ammo) in (&players, &positions, &sprites, &mut ammunition_res).join() {
       for (_, e, a_pos, a_sprite, ()) in (&ammunition, &entities, &positions, &sprites, !&animations).join() {
         let dx = a_pos.x - p_pos.x;
         let dy = a_pos.y - p_pos.y;
@@ -838,6 +854,7 @@ impl<'a> System<'a> for AmmunitionDeathSystem {
         if distance < (a_sprite.width() + p_sprite.width()) / 2.0 {
           entities.delete(e).unwrap();
           events.single_write(GameEvents::AmmunitionDeath(*a_pos));
+          ammo.ammunition = u8::min(ammo.ammunition + ammo.inc_amount, ammo.max_ammunition);
           lazy
             .create_entity(&entities)
             .with(*a_pos)
