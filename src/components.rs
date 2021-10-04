@@ -26,6 +26,10 @@ pub struct Projectile;
 #[storage(NullStorage)]
 pub struct Ammunition;
 
+#[derive(Component, Default)]
+#[storage(NullStorage)]
+pub struct Boost;
+
 #[derive(Component, Default, Copy, Clone)]
 #[storage(DenseVecStorage)]
 pub struct Position {
@@ -65,6 +69,15 @@ impl Velocity {
       base_y: value,
       x: value,
       y: value,
+    }
+  }
+
+  pub fn new_x(value: f32) -> Self {
+    Self {
+      base_x: value,
+      base_y: 0.0,
+      x: value,
+      y: 0.0,
     }
   }
 }

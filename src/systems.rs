@@ -1,3 +1,4 @@
+use crate::components::Boost;
 use crate::{
   components::{
     Ammunition, AmmunitionRes, Angle, Animation, BoostRes, Interpolation, LineParticle, Player, Position, Projectile,
@@ -16,6 +17,82 @@ use rand::{Rng, SeedableRng};
 use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
 use specs::prelude::*;
 use std::{collections::HashSet, f32::consts::PI, time::Duration};
+
+#[derive(Default)]
+pub struct BoostSystem {
+  rng: Option<rand::rngs::SmallRng>,
+}
+
+impl<'a> System<'a> for BoostSystem {
+  type SystemData = (
+    Entities<'a>,
+    Read<'a, LazyUpdate>,
+    Read<'a, HashSet<Keycode>>,
+    Read<'a, Duration>,
+    ReadStorage<'a, Boost>,
+    ReadStorage<'a, Angle>,
+    WriteStorage<'a, Sprite>,
+    WriteStorage<'a, Position>,
+    WriteStorage<'a, Velocity>,
+  );
+
+  fn run(&mut self, data: Self::SystemData) {
+    let (entities, lazy, keycodes, time, boosts, angles, mut sprites, mut positions, mut velocities) = data;
+
+    for keycode in keycodes.iter() {
+      if keycode == &Keycode::S {
+        let rng = self
+          .rng
+          .as_mut()
+          .expect("rng Should not be None! Did you forget to initialize in setup()?");
+        let direction = if rng.gen_bool(1.0 / 2.0) { -1.0 } else { 1.0 };
+        lazy
+          .create_entity(&entities)
+          .with(Boost)
+          .with(Sprite {
+            texture_idx: 7,
+            region: Rect::new(0, 0, 18, 18),
+            ..Default::default()
+          })
+          .with(Position {
+            x: SCREEN_WIDTH as f32 / 2.0 + direction * (SCREEN_WIDTH as f32 / 2.0 + 48.0),
+            y: rng.gen_range(48.0..SCREEN_HEIGHT as f32 - 48.0),
+          })
+          .with(Velocity::new_x(-direction * rng.gen_range(20.0..40.0)))
+          .with(Angle {
+            velocity: rng.gen_range(-4.0..4.0) * PI,
+            ..Default::default()
+          })
+          .build();
+      }
+    }
+
+    for (_, e, angle, sprite, position, velocity) in (
+      &boosts,
+      &entities,
+      &angles,
+      &mut sprites,
+      &mut positions,
+      &mut velocities,
+    )
+      .join()
+    {
+      sprite.rotation += ((angle.velocity * 180.0 / PI) * time.as_secs_f32()) as f64;
+      position.x += velocity.x * time.as_secs_f32();
+      position.y += velocity.y * time.as_secs_f32();
+
+      let sprite_offset_x = sprite.width() / 2.0 + 48.0;
+      if (position.x + sprite_offset_x) < 0.0 || (position.x - sprite_offset_x) > SCREEN_WIDTH as f32 {
+        entities.delete(e).unwrap();
+      }
+    }
+  }
+
+  fn setup(&mut self, world: &mut World) {
+    Self::SystemData::setup(world);
+    self.rng = Some(rand::rngs::SmallRng::from_entropy());
+  }
+}
 
 #[derive(Default)]
 pub struct AmmunitionSystem {
@@ -416,7 +493,11 @@ impl<'a> System<'a> for ShakeSystem {
       fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
         move |n| {
           let n = n as usize;
-          if n >= samples.len() { 0.0 } else { samples[n] }
+          if n >= samples.len() {
+            0.0
+          } else {
+            samples[n]
+          }
         }
       }
       let noise_x = noise(&self.samples_x);

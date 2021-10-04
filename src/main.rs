@@ -30,6 +30,7 @@ use std::{
   collections::HashSet,
   time::{Duration, Instant},
 };
+use crate::systems::BoostSystem;
 
 fn create_ship_texture<'a, 'b>(
   texture_creator: &'a TextureCreator<WindowContext>,
@@ -177,6 +178,28 @@ fn create_ammunition_texture<'a, 'b>(
   Ok(texture)
 }
 
+fn create_boost_texture<'a, 'b>(
+  texture_creator: &'a TextureCreator<WindowContext>,
+  canvas: &'b mut WindowCanvas,
+) -> Result<Texture<'a>, String> {
+  let mut texture = texture_creator
+    .create_texture_target(texture_creator.default_pixel_format(), 18, 18)
+    .map_err(|e| e.to_string())?;
+  canvas
+    .with_texture_canvas(&mut texture, |texture_canvas| {
+      texture_canvas.set_draw_color(Color::RGBA(0, 0, 0, 0));
+      texture_canvas.clear();
+      texture_canvas.box_(6, 6, 11, 11, Color::from(RGB_COLOR_BOOST)).unwrap();
+      texture_canvas
+        .rectangle(0, 0, 18, 18, Color::from(RGB_COLOR_BOOST))
+        .unwrap();
+    })
+    .map_err(|e| e.to_string())?;
+  texture.set_blend_mode(BlendMode::Blend);
+
+  Ok(texture)
+}
+
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
   let sdl_video = sdl_context.video()?;
@@ -200,7 +223,7 @@ fn main() -> Result<(), String> {
   canvas
     .set_logical_size(SCREEN_WIDTH, SCREEN_HEIGHT)
     .map_err(|e| e.to_string())?;
-  canvas.set_draw_color(Color::BLACK);
+  canvas.set_draw_color(Color::from(RGB_COLOR_BACKGROUND));
   canvas.clear();
   canvas.present();
 
@@ -213,6 +236,7 @@ fn main() -> Result<(), String> {
     create_tick_effect_texture(&texture_creator, &mut canvas)?,
     create_trail_effect_texture(&texture_creator, &mut canvas)?,
     create_ammunition_texture(&texture_creator, &mut canvas)?,
+    create_boost_texture(&texture_creator, &mut canvas)?,
   ];
 
   let mut dispatcher = DispatcherBuilder::new()
@@ -225,6 +249,7 @@ fn main() -> Result<(), String> {
     .with(TickEffectSystem::default(), "tick_effect_system", &["player_system"])
     .with(TrailEffectSystem::default(), "trail_effect_system", &["player_system"])
     .with(AmmunitionSystem::default(), "ammunition_system", &["player_system"])
+    .with(BoostSystem::default(), "boost_system", &["player_system"])
     .with(
       AmmunitionDeathSystem,
       "ammunition_death_system",
