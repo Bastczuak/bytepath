@@ -4,7 +4,8 @@ version = "0.1.0"
 authors = ["Sebastian Richter <sebastian.richter@paessler.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies.ggez]
+version = "0.6"
 
 [dependencies.rand]
 version = "0.8"
@@ -13,8 +14,3 @@ features = ["small_rng"]
 [dependencies.specs]
 version = "0.17"
 features = ["specs-derive"]
-
-[dependencies.sdl2]
-version = "0.34"
-default-features = false
-features = ["gfx"]
