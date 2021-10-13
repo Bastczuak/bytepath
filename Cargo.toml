@@ -14,3 +14,7 @@ features = ["small_rng"]
 [dependencies.specs]
 version = "0.17"
 features = ["specs-derive"]
+
+[dependencies.glam]
+version = "0.19"
+features = ["mint"]

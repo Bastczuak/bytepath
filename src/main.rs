@@ -1,47 +1,67 @@
-use specs::WorldExt;
+mod environment;
+mod render;
+mod systems;
 
-struct HelloWorldSystem;
+use crate::environment::RGB_COLOR_BACKGROUND;
+use ggez::*;
+use specs::prelude::*;
+use crate::systems::HelloWorldSystem;
 
-impl <'a>specs::System<'a> for HelloWorldSystem {
-  type SystemData = ();
-
-  fn run(&mut self, _data: Self::SystemData) {
-    println!("Hello World");
-  }
-}
-
-fn main() -> ggez::GameResult {
-  let cb = ggez::ContextBuilder::new("bytepath", "bastczuak");
+fn main() -> GameResult {
+  let cb = ContextBuilder::new("bytepath", "bastczuak");
   let (mut ctx, event_loop) = cb.build()?;
 
-  let mut dispatcher = specs::DispatcherBuilder::new()
-    .with(HelloWorldSystem, "hello", &[])
+  let mut dispatcher = DispatcherBuilder::new()
+    .with(
+      HelloWorldSystem, "hello", &[])
     .build();
-  let mut world = specs::World::new();
+  let mut world = World::new();
   dispatcher.setup(&mut world);
-  // render::RenderSystemData::setup(&mut world);
-
+  render::RenderSystemData::setup(&mut world);
 
   event_loop.run(move |mut event, _window_target, control_flow| {
     if !ctx.continuing {
-      *control_flow = ggez::winit::event_loop::ControlFlow::Exit;
+      *control_flow = winit::event_loop::ControlFlow::Exit;
       return;
     }
 
-    *control_flow = ggez::winit::event_loop::ControlFlow::Poll;
-    ggez::event::process_event(&mut ctx, &mut event);
+    *control_flow = winit::event_loop::ControlFlow::Poll;
+    event::process_event(&mut ctx, &mut event);
 
     match event {
-      ggez::event::winit_event::Event::WindowEvent { event, .. } => match event {
-        ggez::event::winit_event::WindowEvent::CloseRequested => ggez::event::quit(&mut ctx),
+      event::winit_event::Event::WindowEvent { event, .. } => match event {
+        event::winit_event::WindowEvent::CloseRequested => event::quit(&mut ctx),
+        event::winit_event::WindowEvent::KeyboardInput {
+          input:
+          event::winit_event::KeyboardInput {
+            virtual_keycode: Some(keycode),
+            ..
+          },
+          ..
+        } => {
+          if let event::KeyCode::Escape = keycode {
+            *control_flow = winit::event_loop::ControlFlow::Exit
+          }
+        }
         _ => {}
       },
-      ggez::event::winit_event::Event::MainEventsCleared => {
+      event::winit_event::Event::MainEventsCleared => {
         ctx.timer_context.tick();
-        println!("{:?}", ggez::timer::fps(&ctx));
-        dispatcher.dispatch(&world);
-        world.maintain();
-        ggez::timer::yield_now();
+        const DESIRED_FPS: u32 = 60;
+        while timer::check_update_time(&mut ctx, DESIRED_FPS) {
+          let keycodes = input::keyboard::pressed_keys(&mut ctx).clone();
+          *world.write_resource() = keycodes;
+          dispatcher.dispatch(&world);
+          world.maintain();
+        }
+        timer::yield_now();
+
+        render::render(
+          &mut ctx,
+          graphics::Color::from(RGB_COLOR_BACKGROUND),
+          world.system_data(),
+        )
+          .expect("Error while rendering!");
       }
       _ => {}
     }
