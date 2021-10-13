@@ -2,19 +2,38 @@ mod environment;
 mod render;
 mod systems;
 
-use crate::environment::RGB_COLOR_BACKGROUND;
+use crate::{
+  environment::{RGB_COLOR_BACKGROUND, SCREEN_HEIGHT, SCREEN_WIDTH},
+  systems::HelloWorldSystem,
+};
 use ggez::*;
 use specs::prelude::*;
-use crate::systems::HelloWorldSystem;
 
 fn main() -> GameResult {
-  let cb = ContextBuilder::new("bytepath", "bastczuak");
+  let cb = ContextBuilder::new("bytepath", "bastczuak")
+    .window_mode(conf::WindowMode {
+      width: SCREEN_WIDTH,
+      height: SCREEN_HEIGHT,
+      fullscreen_type: conf::FullscreenType::Desktop,
+      ..Default::default()
+    })
+    .window_setup(conf::WindowSetup {
+      title: String::from("Bytepath"),
+      ..Default::default()
+    });
   let (mut ctx, event_loop) = cb.build()?;
 
-  let mut dispatcher = DispatcherBuilder::new()
-    .with(
-      HelloWorldSystem, "hello", &[])
-    .build();
+  graphics::set_default_filter(&mut ctx, graphics::FilterMode::Nearest);
+  let window_color_format = graphics::get_window_color_format(&ctx);
+  let canvas = graphics::Canvas::new(
+    &mut ctx,
+    SCREEN_WIDTH as u16,
+    SCREEN_HEIGHT as u16,
+    conf::NumSamples::One,
+    window_color_format,
+  )?;
+
+  let mut dispatcher = DispatcherBuilder::new().with(HelloWorldSystem, "hello", &[]).build();
   let mut world = World::new();
   dispatcher.setup(&mut world);
   render::RenderSystemData::setup(&mut world);
@@ -33,10 +52,10 @@ fn main() -> GameResult {
         event::winit_event::WindowEvent::CloseRequested => event::quit(&mut ctx),
         event::winit_event::WindowEvent::KeyboardInput {
           input:
-          event::winit_event::KeyboardInput {
-            virtual_keycode: Some(keycode),
-            ..
-          },
+            event::winit_event::KeyboardInput {
+              virtual_keycode: Some(keycode),
+              ..
+            },
           ..
         } => {
           if let event::KeyCode::Escape = keycode {
@@ -58,10 +77,11 @@ fn main() -> GameResult {
 
         render::render(
           &mut ctx,
+          &canvas,
           graphics::Color::from(RGB_COLOR_BACKGROUND),
           world.system_data(),
         )
-          .expect("Error while rendering!");
+        .expect("Error while rendering!");
       }
       _ => {}
     }

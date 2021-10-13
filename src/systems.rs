@@ -1,4 +1,3 @@
-use ggez::*;
 use specs::prelude::*;
 
 pub struct HelloWorldSystem;
