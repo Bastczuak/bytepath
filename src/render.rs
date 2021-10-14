@@ -13,8 +13,8 @@ pub fn render(
   graphics::clear(ctx, background);
   let rect = graphics::Mesh::new_rectangle(
     ctx,
-    graphics::DrawMode::stroke(1.1),
-    graphics::Rect::new(0.0, 0.0, 10.0, 10.0),
+    graphics::DrawMode::stroke(1.0),
+    graphics::Rect::new(0.0, 0.0, 8.0, 8.0),
     graphics::Color::WHITE,
   )?;
   graphics::draw(
