@@ -1,20 +1,25 @@
+mod components;
+mod easings;
 mod environment;
+mod meshes;
 mod render;
+mod resources;
 mod systems;
 
 use crate::{
   environment::{RGB_COLOR_BACKGROUND, SCREEN_HEIGHT, SCREEN_WIDTH},
-  systems::HelloWorldSystem,
+  resources::GameEventsChannel,
+  systems::AmmunitionSystem,
 };
 use ggez::*;
 use specs::prelude::*;
+use crate::systems::PlayerSystem;
 
 fn main() -> GameResult {
   let cb = ContextBuilder::new("bytepath", "bastczuak")
     .window_mode(conf::WindowMode {
       width: SCREEN_WIDTH,
       height: SCREEN_HEIGHT,
-      fullscreen_type: conf::FullscreenType::Desktop,
       ..Default::default()
     })
     .window_setup(conf::WindowSetup {
@@ -22,6 +27,15 @@ fn main() -> GameResult {
       ..Default::default()
     });
   let (mut ctx, event_loop) = cb.build()?;
+
+  graphics::set_mode(
+    &mut ctx,
+    conf::WindowMode {
+      width: 4.0 * SCREEN_WIDTH,
+      height: 4.0 * SCREEN_HEIGHT,
+      ..Default::default()
+    },
+  )?;
 
   graphics::set_default_filter(&mut ctx, graphics::FilterMode::Nearest);
   let window_color_format = graphics::get_window_color_format(&ctx);
@@ -33,12 +47,23 @@ fn main() -> GameResult {
     window_color_format,
   )?;
 
-  let mut dispatcher = DispatcherBuilder::new().with(HelloWorldSystem, "hello", &[]).build();
+  let mut dispatcher = DispatcherBuilder::new()
+    .with(PlayerSystem, "player_system", &[])
+    .with(AmmunitionSystem::default(), "ammo", &[])
+    .build();
   let mut world = World::new();
   dispatcher.setup(&mut world);
   render::RenderSystemData::setup(&mut world);
+  world.insert(core::time::Duration::from_secs(0));
+  let frame_dt = std::time::Duration::new(0, 1_000_000_000u32 / 60);
 
   event_loop.run(move |mut event, _window_target, control_flow| {
+    #[cfg(debug_assertions)]
+    if timer::ticks(&ctx) % 100 == 0 {
+      println!("Delta frame time: {:?} ", timer::delta(&ctx));
+      println!("Average FPS: {}", timer::fps(&ctx));
+    }
+
     if !ctx.continuing {
       *control_flow = winit::event_loop::ControlFlow::Exit;
       return;
@@ -68,6 +93,8 @@ fn main() -> GameResult {
         ctx.timer_context.tick();
         const DESIRED_FPS: u32 = 60;
         while timer::check_update_time(&mut ctx, DESIRED_FPS) {
+          let dt = std::cmp::min(timer::delta(&ctx), frame_dt);
+          *world.write_resource() = dt;
           let keycodes = input::keyboard::pressed_keys(&mut ctx).clone();
           *world.write_resource() = keycodes;
           dispatcher.dispatch(&world);
@@ -85,5 +112,5 @@ fn main() -> GameResult {
       }
       _ => {}
     }
-  })
+  });
 }

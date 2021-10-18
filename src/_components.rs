@@ -1,4 +1,5 @@
 use crate::easings::EasingFunction;
+use sdl2::{pixels::Color, rect::Rect};
 use specs::{prelude::*, Component};
 
 #[derive(Component, Default)]
@@ -117,6 +118,75 @@ impl Interpolation {
       finished,
     )
   }
+}
+
+#[derive(Component, Copy, Clone)]
+#[storage(DenseVecStorage)]
+pub struct Sprite {
+  pub z_index: u8,
+  pub texture_idx: usize,
+  pub rotation: f64,
+  pub scale: f32,
+  pub region: Rect,
+}
+
+impl Sprite {
+  pub fn width(&self) -> f32 {
+    self.region.width() as f32
+  }
+
+  pub fn height(&self) -> f32 {
+    self.region.height() as f32
+  }
+
+  pub fn scaled_region_width(&self) -> u32 {
+    (self.region.width() as f32 * self.scale) as u32
+  }
+
+  pub fn scaled_region_height(&self) -> u32 {
+    (self.region.height() as f32 * self.scale) as u32
+  }
+}
+
+impl Default for Sprite {
+  fn default() -> Self {
+    Self {
+      texture_idx: 0,
+      region: Rect::new(0, 0, 0, 0),
+      rotation: 0.0,
+      scale: 1.0,
+      z_index: 1,
+    }
+  }
+}
+
+#[derive(Component)]
+#[storage(DenseVecStorage)]
+pub struct Animation {
+  pub time: f32,
+  pub frames: Vec<Sprite>,
+}
+
+impl Default for Animation {
+  fn default() -> Self {
+    Self {
+      time: 0.0,
+      frames: Vec::with_capacity(2),
+    }
+  }
+}
+
+#[derive(Component)]
+#[storage(DenseVecStorage)]
+pub struct LineParticle {
+  pub color: Color,
+  pub width: f32,
+  pub length: f32,
+  pub x1: f32,
+  pub y1: f32,
+  pub x2: f32,
+  pub y2: f32,
+  pub time_to_live: f32,
 }
 
 #[derive(Component)]
