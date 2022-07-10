@@ -4,7 +4,10 @@ version = "0.1.0"
 authors = ["Sebastian Richter <sebastian.richter@paessler.com>"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+build = "build.rs"
+
+[dependencies]
+bevy_ecs = "0.7.0"
 
 [dependencies.rand]
 version = "0.8"
@@ -18,3 +21,6 @@ features = ["specs-derive"]
 version = "0.34"
 default-features = false
 features = ["gfx"]
+
+[build-dependencies.gl_generator]
+version = "0.14.0"

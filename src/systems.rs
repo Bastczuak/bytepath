@@ -1,8 +1,7 @@
-use crate::components::Boost;
 use crate::{
   components::{
-    Ammunition, AmmunitionRes, Angle, Animation, BoostRes, Interpolation, LineParticle, Player, Position, Projectile,
-    ShootingEffect, Sprite, TickEffect, TrailEffect, Velocity,
+    Ammunition, AmmunitionRes, Angle, Animation, Boost, BoostRes, Interpolation, LineParticle, Player, Position,
+    Projectile, ShootingEffect, Sprite, TickEffect, TrailEffect, Velocity,
   },
   easings::{ease_in_out_cubic, linear},
   environment::{RGB_COLOR_AMMUNITION, Z_INDEX_BOOST_TRAIL, Z_INDEX_PLAYER},
@@ -493,11 +492,7 @@ impl<'a> System<'a> for ShakeSystem {
       fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
         move |n| {
           let n = n as usize;
-          if n >= samples.len() {
-            0.0
-          } else {
-            samples[n]
-          }
+          if n >= samples.len() { 0.0 } else { samples[n] }
         }
       }
       let noise_x = noise(&self.samples_x);

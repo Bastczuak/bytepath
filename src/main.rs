@@ -1,6 +1,11 @@
+mod gl {
+  include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+}
+
 mod components;
 mod easings;
 mod environment;
+mod opengl;
 mod render;
 mod resources;
 mod systems;
@@ -13,8 +18,8 @@ use crate::{
   },
   resources::{GameEvents, GameEventsChannel},
   systems::{
-    AmmunitionDeathSystem, AmmunitionSystem, FlashSystem, LineParticleSystem, PlayerSystem, ProjectileDeathSystem,
-    ProjectileSystem, ShakeSystem, ShootingSystem, TickEffectSystem, TrailEffectSystem,
+    AmmunitionDeathSystem, AmmunitionSystem, BoostSystem, FlashSystem, LineParticleSystem, PlayerSystem,
+    ProjectileDeathSystem, ProjectileSystem, ShakeSystem, ShootingSystem, TickEffectSystem, TrailEffectSystem,
   },
 };
 use sdl2::{
@@ -23,14 +28,38 @@ use sdl2::{
   keyboard::Keycode,
   pixels::Color,
   render::{BlendMode, Texture, TextureCreator, WindowCanvas},
-  video::WindowContext,
+  video::{GLProfile, WindowContext},
 };
 use specs::prelude::*;
 use std::{
   collections::HashSet,
   time::{Duration, Instant},
 };
-use crate::systems::BoostSystem;
+
+use gl::types::*;
+
+pub struct Gl {
+  inner: std::rc::Rc<gl::Gl>,
+}
+
+impl Gl {
+  pub fn load_with<F>(load_fn: F) -> Self
+  where
+    F: FnMut(&'static str) -> *const GLvoid,
+  {
+    Self {
+      inner: std::rc::Rc::new(gl::Gl::load_with(load_fn)),
+    }
+  }
+}
+
+impl std::ops::Deref for Gl {
+  type Target = gl::Gl;
+
+  fn deref(&self) -> &Self::Target {
+    &self.inner
+  }
+}
 
 fn create_ship_texture<'a, 'b>(
   texture_creator: &'a TextureCreator<WindowContext>,
@@ -200,7 +229,7 @@ fn create_boost_texture<'a, 'b>(
   Ok(texture)
 }
 
-fn main() -> Result<(), String> {
+fn main2() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
   let sdl_video = sdl_context.video()?;
   let display_mode = sdl_video.desktop_display_mode(0)?;
@@ -330,6 +359,56 @@ fn main() -> Result<(), String> {
   }
 
   drop(reader_id);
+
+  Ok(())
+}
+
+//
+fn main() -> Result<(), String> {
+  let sdl_context = sdl2::init()?;
+  let sdl_video = sdl_context.video()?;
+  let gl_attr = sdl_video.gl_attr();
+  gl_attr.set_context_profile(GLProfile::Core);
+  gl_attr.set_context_version(3, 3);
+  let sdl_window = sdl_video
+    .window("bytepath", 800, 600)
+    .opengl()
+    .resizable()
+    .position_centered()
+    .build()
+    .map_err(|e| e.to_string())?;
+  let _ctx = sdl_window.gl_create_context().map_err(|e| e)?;
+  let gl = Gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
+  debug_assert_eq!(gl_attr.context_profile(), GLProfile::Core);
+  debug_assert_eq!(gl_attr.context_version(), (3, 3));
+
+  let mut event_pump = sdl_context.event_pump()?;
+  let frame_dt = Duration::new(0, 1_000_000_000u32 / 60);
+  let mut last_time = Instant::now();
+
+  'running: loop {
+    let current_time = Instant::now();
+    let mut frame_time = current_time - last_time;
+    last_time = current_time;
+
+    while frame_time.as_secs_f32() > 0.0 {
+      let dt = std::cmp::min(frame_time, frame_dt);
+
+      for event in event_pump.poll_iter() {
+        match event {
+          Event::Quit { .. }
+          | Event::KeyDown {
+            keycode: Some(Keycode::Escape),
+            ..
+          } => break 'running,
+          _ => {}
+        }
+      }
+      frame_time -= dt;
+    }
+
+    sdl_window.gl_swap_window();
+  }
 
   Ok(())
 }
