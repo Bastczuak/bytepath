@@ -4,13 +4,12 @@ use crate::{
     Projectile, ShootingEffect, Sprite, TickEffect, TrailEffect, Velocity,
   },
   easings::{ease_in_out_cubic, linear},
-  environment::{RGB_COLOR_AMMUNITION, Z_INDEX_BOOST_TRAIL, Z_INDEX_PLAYER},
+  environment::{ SCREEN_HEIGHT, SCREEN_WIDTH, RGB_COLOR_AMMUNITION, Z_INDEX_BOOST_TRAIL, Z_INDEX_PLAYER},
   resources::{
     Flash, GameEvents,
     GameEvents::{PlayerDeath, PlayerSpawn},
     GameEventsChannel, Shake,
   },
-  SCREEN_HEIGHT, SCREEN_WIDTH,
 };
 use rand::{Rng, SeedableRng};
 use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
