@@ -1,43 +1,3 @@
-mod gl {
-  include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
-}
-
-mod components;
-mod easings;
-mod environment;
-mod opengl;
-mod render;
-mod resources;
-mod systems;
-
-use sdl2::{event::Event, keyboard::Keycode, video::GLProfile};
-use std::time::{Duration, Instant};
-
-use gl::types::*;
-
-pub struct Gl {
-  inner: std::rc::Rc<gl::Gl>,
-}
-
-impl Gl {
-  pub fn load_with<F>(load_fn: F) -> Self
-    where
-      F: FnMut(&'static str) -> *const GLvoid,
-  {
-    Self {
-      inner: std::rc::Rc::new(gl::Gl::load_with(load_fn)),
-    }
-  }
-}
-
-impl std::ops::Deref for Gl {
-  type Target = gl::Gl;
-
-  fn deref(&self) -> &Self::Target {
-    &self.inner
-  }
-}
-
 // fn create_ship_texture<'a, 'b>(
 //   texture_creator: &'a TextureCreator<WindowContext>,
 //   canvas: &'b mut WindowCanvas,
@@ -340,18 +300,47 @@ impl std::ops::Deref for Gl {
 //   Ok(())
 // }
 
-//
-use bevy_ecs::{prelude::*, world::World};
-
-#[derive(Component)]
-struct Position {
-  x: f32,
-  y: f32,
+mod gl {
+  include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
 
-fn print_position(query: Query<(Entity, &Position)>) {
-  for (entity, position) in query.iter() {
-    println!("Entity {:?} is at position: x {}, y {}", entity, position.x, position.y);
+mod color;
+mod components;
+mod easings;
+mod environment;
+mod opengl;
+mod render;
+mod systems;
+
+use crate::{color::ColorGl, components::Position, environment::RGB_CLEAR_COLOR, systems::print_position};
+use bevy_ecs::{prelude::*, world::World};
+use gl::types::*;
+use sdl2::{event::Event, keyboard::Keycode, video::GLProfile};
+use std::{
+  collections::HashSet,
+  time::{Duration, Instant},
+};
+
+pub struct Gl {
+  inner: std::rc::Rc<gl::Gl>,
+}
+
+impl Gl {
+  pub fn load_with<F>(load_fn: F) -> Self
+  where
+    F: FnMut(&'static str) -> *const GLvoid,
+  {
+    Self {
+      inner: std::rc::Rc::new(gl::Gl::load_with(load_fn)),
+    }
+  }
+}
+
+impl std::ops::Deref for Gl {
+  type Target = gl::Gl;
+
+  fn deref(&self) -> &Self::Target {
+    &self.inner
   }
 }
 
@@ -375,6 +364,7 @@ fn main() -> Result<(), String> {
 
   let mut world = World::default();
   world.spawn().insert(Position { x: 0.0, y: 1.0 });
+  world.insert_resource::<HashSet<Keycode>>(HashSet::default());
   let mut schedule = Schedule::default();
   schedule.add_stage("hello", SystemStage::parallel().with_system(print_position));
 
@@ -401,10 +391,19 @@ fn main() -> Result<(), String> {
         }
       }
 
+      let keycodes = event_pump
+        .keyboard_state()
+        .pressed_scancodes()
+        .filter_map(Keycode::from_scancode)
+        .collect::<HashSet<Keycode>>();
+      *world.resource_mut() = keycodes;
+
       schedule.run(&mut world);
 
       frame_time -= dt;
     }
+
+    render::render_gl(&gl, ColorGl::from(RGB_CLEAR_COLOR))?;
 
     sdl_window.gl_swap_window();
   }

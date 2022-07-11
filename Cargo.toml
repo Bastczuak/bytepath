@@ -20,7 +20,6 @@ features = ["specs-derive"]
 [dependencies.sdl2]
 version = "0.34"
 default-features = false
-features = ["gfx"]
 
 [build-dependencies.gl_generator]
 version = "0.14.0"
