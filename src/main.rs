@@ -300,49 +300,26 @@
 //   Ok(())
 // }
 
-mod gl {
-  include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
-}
-
 mod color;
 mod components;
 mod easings;
 mod environment;
-mod opengl;
 mod render;
 mod systems;
 
-use crate::{color::ColorGl, components::Position, environment::RGB_CLEAR_COLOR, systems::print_position};
+use crate::{
+  components::Position,
+  environment::{RGB_CLEAR_COLOR, SCREEN_HEIGHT, SCREEN_WIDTH},
+  render::Gl,
+  systems::print_position,
+};
 use bevy_ecs::{prelude::*, world::World};
-use gl::types::*;
 use sdl2::{event::Event, keyboard::Keycode, video::GLProfile};
 use std::{
   collections::HashSet,
   time::{Duration, Instant},
 };
-
-pub struct Gl {
-  inner: std::rc::Rc<gl::Gl>,
-}
-
-impl Gl {
-  pub fn load_with<F>(load_fn: F) -> Self
-  where
-    F: FnMut(&'static str) -> *const GLvoid,
-  {
-    Self {
-      inner: std::rc::Rc::new(gl::Gl::load_with(load_fn)),
-    }
-  }
-}
-
-impl std::ops::Deref for Gl {
-  type Target = gl::Gl;
-
-  fn deref(&self) -> &Self::Target {
-    &self.inner
-  }
-}
+use sdl2::event::WindowEvent;
 
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
@@ -351,7 +328,7 @@ fn main() -> Result<(), String> {
   gl_attr.set_context_profile(GLProfile::Core);
   gl_attr.set_context_version(3, 3);
   let sdl_window = sdl_video
-    .window("bytepath", 800, 600)
+    .window("bytepath", SCREEN_WIDTH, SCREEN_HEIGHT)
     .opengl()
     .resizable()
     .position_centered()
@@ -361,6 +338,7 @@ fn main() -> Result<(), String> {
   let gl = Gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
   debug_assert_eq!(gl_attr.context_profile(), GLProfile::Core);
   debug_assert_eq!(gl_attr.context_version(), (3, 3));
+  let mut opengl_ctx = render::init(&gl)?;
 
   let mut world = World::default();
   world.spawn().insert(Position { x: 0.0, y: 1.0 });
@@ -387,6 +365,11 @@ fn main() -> Result<(), String> {
             keycode: Some(Keycode::Escape),
             ..
           } => break 'running,
+          Event::Window {
+            win_event: WindowEvent::Resized(w, h),..
+          } => {
+            opengl_ctx.viewport = (w, h)
+          }
           _ => {}
         }
       }
@@ -403,10 +386,12 @@ fn main() -> Result<(), String> {
       frame_time -= dt;
     }
 
-    render::render_gl(&gl, ColorGl::from(RGB_CLEAR_COLOR))?;
+    render::render_gl(&gl, &opengl_ctx)?;
 
     sdl_window.gl_swap_window();
   }
+
+  render::delete(&gl, &opengl_ctx);
 
   Ok(())
 }
