@@ -1,8 +1,5 @@
-use crate::components::Position;
 use bevy_ecs::prelude::*;
+use sdl2::keyboard::Keycode;
+use std::collections::HashSet;
 
-pub fn print_position(query: Query<(Entity, &Position)>) {
-  for (entity, position) in query.iter() {
-    // println!("Entity {:?} is at position: x {}, y {}", entity, position.x, position.y);
-  }
-}
+pub fn print_keys(keys: Res<HashSet<Keycode>>) {}

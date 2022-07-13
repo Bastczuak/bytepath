@@ -2,9 +2,20 @@ mod gl {
   include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
 
-use crate::{color::ColorGl, render::gl::types::*, RGB_CLEAR_COLOR, SCREEN_HEIGHT, SCREEN_WIDTH};
+use crate::{
+  color::ColorGl,
+  environment::{SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH},
+  render::gl::types::*,
+  RGB_CLEAR_COLOR, SCREEN_HEIGHT, SCREEN_WIDTH,
+};
+use lyon::{
+  math::{rect, Point},
+  tessellation::{
+    geometry_builder::simple_builder, BuffersBuilder, StrokeOptions, StrokeTessellator, StrokeVertex,
+    StrokeVertexConstructor, VertexBuffers,
+  },
+};
 use std::ffi::CString;
-use crate::environment::{SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH};
 
 const FBO_VERTEX_SHADER: &str = r#"
 #version 330 core
@@ -28,6 +39,31 @@ out vec4 Color;
 uniform sampler2D uTexture;
 void main() {
   Color = texture(uTexture, IN.TexCoords);
+}
+"#;
+
+const SCENE_VERTEX_SHADER: &str = r#"
+#version 330 core
+layout (location = 0) in vec4 Position;
+layout (location = 1) in vec4 Color;
+uniform mat4 uMVP;
+out VERTEX_SHADER_OUTPUT {
+  vec4 Color;
+} OUT;
+void main() {
+  gl_Position = uMVP * Position;
+  OUT.Color = Color;
+}
+"#;
+
+const SCENE_FRAGMENT_SHADER: &str = r#"
+#version 330 core
+in VERTEX_SHADER_OUTPUT {
+  vec4 Color;
+} IN;
+out vec4 Color;
+void main() {
+  Color = IN.Color;
 }
 "#;
 
@@ -74,10 +110,40 @@ pub struct LowResFrameBuffer {
   shader_program: GLuint,
 }
 
+pub struct Scene {
+  vao: GLuint,
+  vbo: GLuint,
+  ebo: GLuint,
+  shader_program: GLuint,
+}
+
 pub struct OpenglCtx {
   clear_color: ColorGl,
   frame_buffer: LowResFrameBuffer,
+  scene: Scene,
   pub viewport: (GLsizei, GLsizei),
+}
+
+#[repr(C)]
+struct MyVertex {
+  position: [f32; 4],
+  color_rgba: [f32; 4],
+}
+
+struct MyVertexConfig {
+  position: glam::Mat4,
+  color_rgba: glam::Vec4,
+}
+
+impl StrokeVertexConstructor<MyVertex> for MyVertexConfig {
+  fn new_vertex(&mut self, vertex: StrokeVertex) -> MyVertex {
+    let position = vertex.position().to_array();
+    let position = self.position * glam::Vec4::new(position[0], position[1], 0.0, 1.0);
+    MyVertex {
+      position: position.to_array(),
+      color_rgba: self.color_rgba.to_array(),
+    }
+  }
 }
 
 unsafe fn create_error_buffer(length: usize) -> CString {
@@ -136,10 +202,20 @@ pub fn create_shader_program(gl: &gl::Gl, vertex_src: &str, fragment_src: &str) 
   link_program(gl, vertex_shader, fragment_shader)
 }
 
+macro_rules! get_offset {
+  ($type:ty, $field:tt) => {{
+    let dummy = core::mem::MaybeUninit::<$type>::uninit();
+    let dummy_ptr = dummy.as_ptr();
+    let field_ptr = core::ptr::addr_of!((*dummy_ptr).$field);
+    field_ptr as usize - dummy_ptr as usize
+  }};
+}
+
 pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
   let low_res_prg = create_shader_program(gl, FBO_VERTEX_SHADER, FBO_FRAGMENT_SHADER)?;
+  let scene_prg = create_shader_program(gl, SCENE_VERTEX_SHADER, SCENE_FRAGMENT_SHADER)?;
   let (fbo_vao, fbo_vbo, fbo, fbo_texture) = unsafe {
-    let (mut vao, mut vbo, mut fbo) = (0, 0, 0);
+    let (mut vao, mut vbo) = (0, 0);
     gl.GenVertexArrays(1, &mut vao);
     gl.GenBuffers(1, &mut vbo);
     gl.BindVertexArray(vao);
@@ -179,6 +255,8 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
       0,
     );
 
+    let mut fbo = 0;
+    gl.GenFramebuffers(1, &mut fbo);
     gl.BindFramebuffer(gl::FRAMEBUFFER, fbo);
 
     let mut fbo_texture = 0;
@@ -197,18 +275,17 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
     );
     gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
     gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as i32);
-    gl.FramebufferTexture2D(
-      gl::FRAMEBUFFER,
-      gl::COLOR_ATTACHMENT0,
-      gl::TEXTURE_2D,
-      fbo_texture,
-      0,
-    );
+    gl.FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, fbo_texture, 0);
 
     let mut rbo = 0;
     gl.GenRenderbuffers(1, &mut rbo);
     gl.BindRenderbuffer(gl::RENDERBUFFER, rbo);
-    gl.RenderbufferStorage(gl::RENDERBUFFER, gl::DEPTH24_STENCIL8, SCREEN_RENDER_WIDTH, SCREEN_RENDER_HEIGHT);
+    gl.RenderbufferStorage(
+      gl::RENDERBUFFER,
+      gl::DEPTH24_STENCIL8,
+      SCREEN_RENDER_WIDTH,
+      SCREEN_RENDER_HEIGHT,
+    );
     gl.FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::DEPTH_STENCIL_ATTACHMENT, gl::RENDERBUFFER, rbo);
     if gl.CheckFramebufferStatus(gl::FRAMEBUFFER) != gl::FRAMEBUFFER_COMPLETE {
       println!("ERROR::FRAMEBUFFER:: Framebuffer is not complete!");
@@ -216,6 +293,61 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
     gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
 
     (vao, vbo, fbo, fbo_texture)
+  };
+  let (scene_vao, scene_vbo, scene_ebo) = unsafe {
+    let mut geometry: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut vertex_builder = simple_builder(&mut geometry);
+    let mut tessellator = StrokeTessellator::new();
+    let mut options = StrokeOptions::default();
+    options.line_width = 0.1;
+    tessellator
+      .tessellate_rectangle(&rect(0.0, 0.0, 1.0, 1.0), &options, &mut vertex_builder)
+      .unwrap();
+
+    let (mut vao, mut vbo, mut ebo) = (0, 0, 0);
+    gl.GenVertexArrays(1, &mut vao);
+
+    gl.GenBuffers(1, &mut vbo);
+    gl.GenBuffers(1, &mut ebo);
+    gl.BindVertexArray(vao);
+    gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
+    gl.BufferData(
+      gl::ARRAY_BUFFER,
+      (std::mem::size_of::<MyVertex>() * geometry.vertices.len() * 10000) as GLsizeiptr,
+      std::ptr::null(),
+      gl::DYNAMIC_DRAW,
+    );
+    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
+    gl.BufferData(
+      gl::ELEMENT_ARRAY_BUFFER,
+      (std::mem::size_of::<u16>() * geometry.indices.len() * 10000) as GLsizeiptr,
+      std::ptr::null(),
+      gl::DYNAMIC_DRAW,
+    );
+
+    let pos_attr = gl.GetAttribLocation(scene_prg, CString::new("Position").unwrap().into_raw());
+    gl.EnableVertexAttribArray(pos_attr as u32);
+    gl.VertexAttribPointer(
+      pos_attr as u32,
+      3,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyVertex>()) as i32,
+      get_offset!(MyVertex, position) as *const GLvoid,
+    );
+
+    let color_attr = gl.GetAttribLocation(scene_prg, CString::new("Color").unwrap().into_raw());
+    gl.EnableVertexAttribArray(color_attr as u32);
+    gl.VertexAttribPointer(
+      color_attr as u32,
+      3,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyVertex>()) as i32,
+      get_offset!(MyVertex, color_rgba) as *const GLvoid,
+    );
+
+    (vao, vbo, ebo)
   };
 
   Ok(OpenglCtx {
@@ -227,22 +359,37 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
       texture2d: fbo_texture,
       shader_program: low_res_prg,
     },
+    scene: Scene {
+      vao: scene_vao,
+      vbo: scene_vbo,
+      ebo: scene_ebo,
+      shader_program: scene_prg,
+    },
     viewport: (SCREEN_WIDTH as GLsizei, SCREEN_HEIGHT as GLsizei),
   })
 }
 
 pub fn delete(gl: &Gl, opengl_ctx: &OpenglCtx) {
-  unsafe{
+  unsafe {
     gl.DeleteVertexArrays(1, &opengl_ctx.frame_buffer.vao);
+    gl.DeleteVertexArrays(1, &opengl_ctx.scene.vao);
     gl.DeleteBuffers(1, &opengl_ctx.frame_buffer.vbo);
     gl.DeleteBuffers(1, &opengl_ctx.frame_buffer.texture2d);
+    gl.DeleteBuffers(1, &opengl_ctx.scene.vbo);
+    gl.DeleteBuffers(1, &opengl_ctx.scene.ebo);
     gl.DeleteProgram(opengl_ctx.frame_buffer.shader_program);
+    gl.DeleteProgram(opengl_ctx.scene.shader_program);
     gl.DeleteFramebuffers(1, &opengl_ctx.frame_buffer.fbo);
   }
 }
 
 pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx) -> Result<(), String> {
-  let OpenglCtx { clear_color, frame_buffer, viewport: (w, h) } = opengl_ctx;
+  let OpenglCtx {
+    clear_color,
+    frame_buffer,
+    viewport: (w, h),
+    scene,
+  } = opengl_ctx;
   unsafe {
     gl.BindFramebuffer(gl::FRAMEBUFFER, frame_buffer.fbo);
     gl.Viewport(0, 0, SCREEN_RENDER_WIDTH, SCREEN_RENDER_HEIGHT);
@@ -250,7 +397,102 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx) -> Result<(), String> {
     gl.ClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
     gl.Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
 
-    // render scene
+    //----------------------SCENE----------------------//
+    let camera_pos = glam::Vec3::new(0.0, 0.0, 3.0);
+    let camera_front = glam::Vec3::new(0.0, 0.0, -1.0);
+    let camera_up = glam::Vec3::new(0.0, 1.0, 0.0);
+    let camera_zoom = -5.0;
+    let view = glam::Mat4::look_at_rh(camera_pos, camera_pos + camera_front, camera_up);
+    let aspect = SCREEN_RENDER_WIDTH as f32 / SCREEN_RENDER_HEIGHT as f32;
+    let projection = glam::Mat4::orthographic_rh_gl(
+      -aspect * camera_zoom,
+      aspect * camera_zoom,
+      -camera_zoom,
+      camera_zoom,
+      0.1,
+      100.0,
+    );
+
+    let mut geometry: VertexBuffers<MyVertex, u16> = VertexBuffers::new();
+    {
+      let mut tessellator = StrokeTessellator::new();
+      let mut options = StrokeOptions::default();
+      options.line_width = 0.1;
+      let (w, h) = (1.0, 1.0);
+      let position = glam::Mat4::from_rotation_translation(
+        glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), 20.0f32.to_radians()),
+        glam::Vec3::new(0.0, 0.0, -1.0),
+      ) * glam::Mat4::from_translation(glam::Vec3::new(w / -2.0, h / -2.0, 0.0));
+      tessellator
+        .tessellate_rectangle(
+          &rect(0.0, 0.0, w, h),
+          &options,
+          &mut BuffersBuilder::new(
+            &mut geometry,
+            MyVertexConfig {
+              color_rgba: glam::Vec4::new(0.0, 1.0, 0.0, 1.0),
+              position,
+            },
+          ),
+        )
+        .unwrap();
+      let (w, h) = (2.0, 2.0);
+      let position = glam::Mat4::from_rotation_translation(
+        glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), 20.0f32.to_radians()),
+        glam::Vec3::new(0.0, 0.0, -40.0),
+      ) * glam::Mat4::from_translation(glam::Vec3::new(w / -2.0, h / -2.0, 0.0));
+      tessellator
+        .tessellate_rectangle(
+          &rect(0.0, 0.0, w, h),
+          &options,
+          &mut BuffersBuilder::new(
+            &mut geometry,
+            MyVertexConfig {
+              color_rgba: glam::Vec4::new(1.0, 0.0, 0.0, 1.0),
+              position,
+            },
+          ),
+        )
+        .unwrap();
+    }
+
+    gl.UseProgram(scene.shader_program);
+    gl.BindVertexArray(scene.vao);
+    gl.BindBuffer(gl::ARRAY_BUFFER, scene.vbo);
+    gl.BufferSubData(
+      gl::ARRAY_BUFFER,
+      0,
+      (geometry.vertices.len() * std::mem::size_of::<MyVertex>()) as GLsizeiptr,
+      geometry.vertices.as_ptr() as *const GLvoid,
+    );
+    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, scene.ebo);
+    gl.BufferSubData(
+      gl::ELEMENT_ARRAY_BUFFER,
+      0,
+      (geometry.indices.len() * std::mem::size_of::<u16>()) as GLsizeiptr,
+      geometry.indices.as_ptr() as *const GLvoid,
+    );
+
+    let mvp_mat = {
+      let model = glam::Mat4::from_rotation_z(20.0f32.to_radians());
+      let view = glam::Mat4::look_at_rh(camera_pos, camera_pos + camera_front, camera_up);
+      projection * view * model
+    };
+
+    gl.UniformMatrix4fv(
+      gl.GetUniformLocation(scene.shader_program, CString::new("uMVP").unwrap().into_raw()),
+      1,
+      gl::FALSE,
+      mvp_mat.to_cols_array().as_ptr(),
+    );
+
+    gl.DrawElements(
+      gl::TRIANGLES,
+      geometry.indices.len() as i32,
+      gl::UNSIGNED_SHORT,
+      std::ptr::null(),
+    );
+    //----------------------SCENE----------------------//
 
     gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
     gl.Viewport(0, 0, *w, *h);

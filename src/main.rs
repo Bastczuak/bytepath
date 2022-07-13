@@ -311,7 +311,7 @@ use crate::{
   components::Position,
   environment::{RGB_CLEAR_COLOR, SCREEN_HEIGHT, SCREEN_WIDTH},
   render::Gl,
-  systems::print_position,
+  systems::print_keys,
 };
 use bevy_ecs::{prelude::*, world::World};
 use sdl2::{event::Event, keyboard::Keycode, video::GLProfile};
@@ -344,7 +344,7 @@ fn main() -> Result<(), String> {
   world.spawn().insert(Position { x: 0.0, y: 1.0 });
   world.insert_resource::<HashSet<Keycode>>(HashSet::default());
   let mut schedule = Schedule::default();
-  schedule.add_stage("hello", SystemStage::parallel().with_system(print_position));
+  schedule.add_stage("hello", SystemStage::parallel().with_system(print_keys));
 
   let mut event_pump = sdl_context.event_pump()?;
   let frame_dt = Duration::new(0, 1_000_000_000u32 / 60);

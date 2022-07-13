@@ -13,13 +13,14 @@ bevy_ecs = "0.7.0"
 version = "0.8"
 features = ["small_rng"]
 
-[dependencies.specs]
-version = "0.17"
-features = ["specs-derive"]
-
 [dependencies.sdl2]
-version = "0.34"
-default-features = false
+version = "0.35.0"
+
+[dependencies.glam]
+version = "0.20.0"
+
+[dependencies.lyon]
+version = "0.17.10"
 
 [build-dependencies.gl_generator]
 version = "0.14.0"
