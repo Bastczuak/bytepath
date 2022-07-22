@@ -309,7 +309,7 @@ mod systems;
 
 use crate::{
   components::Position,
-  environment::{RGB_CLEAR_COLOR, SCREEN_HEIGHT, SCREEN_WIDTH},
+  environment::{RGB_CLEAR_COLOR, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH},
   render::Gl,
   systems::print_keys,
 };
@@ -328,7 +328,7 @@ fn main() -> Result<(), String> {
   gl_attr.set_context_profile(GLProfile::Core);
   gl_attr.set_context_version(3, 3);
   let sdl_window = sdl_video
-    .window("bytepath", SCREEN_WIDTH, SCREEN_HEIGHT)
+    .window("bytepath", SCREEN_RENDER_WIDTH, SCREEN_RENDER_HEIGHT)
     .opengl()
     .resizable()
     .position_centered()

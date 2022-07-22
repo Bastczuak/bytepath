@@ -4,9 +4,9 @@ mod gl {
 
 use crate::{
   color::ColorGl,
-  environment::{SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH},
+  environment::{SCREEN_HEIGHT, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH, SCREEN_WIDTH},
   render::gl::types::*,
-  RGB_CLEAR_COLOR, SCREEN_HEIGHT, SCREEN_WIDTH,
+  RGB_CLEAR_COLOR,
 };
 use lyon::{
   math::{rect, Point},
@@ -19,11 +19,14 @@ use std::ffi::CString;
 
 const FBO_VERTEX_SHADER: &str = r#"
 #version 330 core
+
 layout (location = 0) in vec2 Position;
 layout (location = 1) in vec2 TexCoords;
+
 out VERTEX_SHADER_OUTPUT {
   vec2 TexCoords;
 } OUT;
+
 void main() {
   OUT.TexCoords = TexCoords;
   gl_Position = vec4(Position, 0.0, 1.0);
@@ -32,11 +35,15 @@ void main() {
 
 const FBO_FRAGMENT_SHADER: &str = r#"
 #version 330 core
+
 in VERTEX_SHADER_OUTPUT {
   vec2 TexCoords;
 } IN;
+
 out vec4 Color;
+
 uniform sampler2D uTexture;
+
 void main() {
   Color = texture(uTexture, IN.TexCoords);
 }
@@ -44,24 +51,32 @@ void main() {
 
 const SCENE_VERTEX_SHADER: &str = r#"
 #version 330 core
-layout (location = 0) in vec4 Position;
-layout (location = 1) in vec4 Color;
+
+layout (location = 0) in mat4 Transform;
+layout (location = 4) in vec4 Color;
+layout (location = 5) in vec2 Position;
+
 uniform mat4 uMVP;
+
 out VERTEX_SHADER_OUTPUT {
   vec4 Color;
 } OUT;
+
 void main() {
-  gl_Position = uMVP * Position;
+  gl_Position = uMVP * Transform * vec4(Position, 0.0, 1.0);
   OUT.Color = Color;
 }
 "#;
 
 const SCENE_FRAGMENT_SHADER: &str = r#"
 #version 330 core
+
 in VERTEX_SHADER_OUTPUT {
   vec4 Color;
 } IN;
+
 out vec4 Color;
+
 void main() {
   Color = IN.Color;
 }
@@ -80,7 +95,7 @@ const LOW_RES_QUAD_VERTICES: [f32; 24] = [
 ];
 
 pub struct Gl {
-  inner: std::rc::Rc<gl::Gl>,
+  inner: std::sync::Arc<gl::Gl>,
 }
 
 impl Gl {
@@ -89,7 +104,7 @@ impl Gl {
       F: FnMut(&'static str) -> *const GLvoid,
   {
     Self {
-      inner: std::rc::Rc::new(gl::Gl::load_with(load_fn)),
+      inner: std::sync::Arc::new(gl::Gl::load_with(load_fn)),
     }
   }
 }
@@ -126,22 +141,29 @@ pub struct OpenglCtx {
 
 #[repr(C)]
 struct MyVertex {
-  position: [f32; 4],
+  transform_mat4_1: [f32; 4],
+  transform_mat4_2: [f32; 4],
+  transform_mat4_3: [f32; 4],
+  transform_mat4_4: [f32; 4],
   color_rgba: [f32; 4],
+  position: [f32; 2],
 }
 
 struct MyVertexConfig {
-  position: glam::Mat4,
+  transform: glam::Mat4,
   color_rgba: glam::Vec4,
 }
 
 impl StrokeVertexConstructor<MyVertex> for MyVertexConfig {
   fn new_vertex(&mut self, vertex: StrokeVertex) -> MyVertex {
-    let position = vertex.position().to_array();
-    let position = self.position * glam::Vec4::new(position[0], position[1], 0.0, 1.0);
+    let t = self.transform.to_cols_array_2d();
     MyVertex {
-      position: position.to_array(),
+      transform_mat4_1: t[0],
+      transform_mat4_2: t[1],
+      transform_mat4_3: t[2],
+      transform_mat4_4: t[3],
       color_rgba: self.color_rgba.to_array(),
+      position: vertex.position().to_array(),
     }
   }
 }
@@ -266,8 +288,8 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
       gl::TEXTURE_2D,
       0,
       gl::RGB as i32,
-      SCREEN_RENDER_WIDTH,
-      SCREEN_RENDER_HEIGHT,
+      SCREEN_WIDTH,
+      SCREEN_HEIGHT,
       0,
       gl::RGB,
       gl::UNSIGNED_BYTE,
@@ -280,12 +302,7 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
     let mut rbo = 0;
     gl.GenRenderbuffers(1, &mut rbo);
     gl.BindRenderbuffer(gl::RENDERBUFFER, rbo);
-    gl.RenderbufferStorage(
-      gl::RENDERBUFFER,
-      gl::DEPTH24_STENCIL8,
-      SCREEN_RENDER_WIDTH,
-      SCREEN_RENDER_HEIGHT,
-    );
+    gl.RenderbufferStorage(gl::RENDERBUFFER, gl::DEPTH24_STENCIL8, SCREEN_WIDTH, SCREEN_HEIGHT);
     gl.FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::DEPTH_STENCIL_ATTACHMENT, gl::RENDERBUFFER, rbo);
     if gl.CheckFramebufferStatus(gl::FRAMEBUFFER) != gl::FRAMEBUFFER_COMPLETE {
       println!("ERROR::FRAMEBUFFER:: Framebuffer is not complete!");
@@ -301,9 +318,8 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
     let mut options = StrokeOptions::default();
     options.line_width = 0.1;
     tessellator
-      .tessellate_rectangle(&rect(0.0, 0.0, 1.0, 1.0), &options, &mut vertex_builder)
+      .tessellate_circle(Point::new(0.0, 0.0), 16.0, &options, &mut vertex_builder)
       .unwrap();
-
     let (mut vao, mut vbo, mut ebo) = (0, 0, 0);
     gl.GenVertexArrays(1, &mut vao);
 
@@ -325,26 +341,63 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
       gl::DYNAMIC_DRAW,
     );
 
-    let pos_attr = gl.GetAttribLocation(scene_prg, CString::new("Position").unwrap().into_raw());
-    gl.EnableVertexAttribArray(pos_attr as u32);
+    let transform_attr = gl.GetAttribLocation(scene_prg, CString::new("Transform").unwrap().into_raw()) as GLuint;
+    gl.EnableVertexAttribArray(transform_attr);
     gl.VertexAttribPointer(
-      pos_attr as u32,
-      3,
+      transform_attr,
+      4,
       gl::FLOAT,
       gl::FALSE,
       (std::mem::size_of::<MyVertex>()) as i32,
-      get_offset!(MyVertex, position) as *const GLvoid,
+      get_offset!(MyVertex, transform_mat4_1) as *const GLvoid,
     );
-
+    gl.EnableVertexAttribArray(transform_attr + 1);
+    gl.VertexAttribPointer(
+      transform_attr + 1,
+      4,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyVertex>()) as i32,
+      get_offset!(MyVertex, transform_mat4_2) as *const GLvoid,
+    );
+    gl.EnableVertexAttribArray(transform_attr + 2);
+    gl.VertexAttribPointer(
+      transform_attr + 2,
+      4,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyVertex>()) as i32,
+      get_offset!(MyVertex, transform_mat4_3) as *const GLvoid,
+    );
+    gl.EnableVertexAttribArray(transform_attr + 3);
+    gl.VertexAttribPointer(
+      transform_attr + 3,
+      4,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyVertex>()) as i32,
+      get_offset!(MyVertex, transform_mat4_4) as *const GLvoid,
+    );
     let color_attr = gl.GetAttribLocation(scene_prg, CString::new("Color").unwrap().into_raw());
     gl.EnableVertexAttribArray(color_attr as u32);
     gl.VertexAttribPointer(
       color_attr as u32,
-      3,
+      4,
       gl::FLOAT,
       gl::FALSE,
       (std::mem::size_of::<MyVertex>()) as i32,
       get_offset!(MyVertex, color_rgba) as *const GLvoid,
+    );
+
+    let pos_attr = gl.GetAttribLocation(scene_prg, CString::new("Position").unwrap().into_raw());
+    gl.EnableVertexAttribArray(pos_attr as u32);
+    gl.VertexAttribPointer(
+      pos_attr as u32,
+      2,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyVertex>()) as i32,
+      get_offset!(MyVertex, position) as *const GLvoid,
     );
 
     (vao, vbo, ebo)
@@ -365,7 +418,7 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
       ebo: scene_ebo,
       shader_program: scene_prg,
     },
-    viewport: (SCREEN_WIDTH as GLsizei, SCREEN_HEIGHT as GLsizei),
+    viewport: (SCREEN_RENDER_WIDTH as GLsizei, SCREEN_RENDER_HEIGHT as GLsizei),
   })
 }
 
@@ -392,7 +445,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx) -> Result<(), String> {
   } = opengl_ctx;
   unsafe {
     gl.BindFramebuffer(gl::FRAMEBUFFER, frame_buffer.fbo);
-    gl.Viewport(0, 0, SCREEN_RENDER_WIDTH, SCREEN_RENDER_HEIGHT);
+    gl.Viewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     gl.Enable(gl::DEPTH_TEST);
     gl.ClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
     gl.Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
@@ -401,43 +454,45 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx) -> Result<(), String> {
     let camera_pos = glam::Vec3::new(0.0, 0.0, 3.0);
     let camera_front = glam::Vec3::new(0.0, 0.0, -1.0);
     let camera_up = glam::Vec3::new(0.0, 1.0, 0.0);
-    let camera_zoom = -5.0;
+    let camera_zoom = 1.0;
     let view = glam::Mat4::look_at_rh(camera_pos, camera_pos + camera_front, camera_up);
-    let aspect = SCREEN_RENDER_WIDTH as f32 / SCREEN_RENDER_HEIGHT as f32;
     let projection = glam::Mat4::orthographic_rh_gl(
-      -aspect * camera_zoom,
-      aspect * camera_zoom,
-      -camera_zoom,
-      camera_zoom,
-      0.1,
+      -SCREEN_WIDTH as f32 * 0.5,
+      SCREEN_WIDTH as f32 * 0.5,
+      -SCREEN_HEIGHT as f32 * 0.5,
+      SCREEN_HEIGHT as f32 * 0.5,
+      -100.0,
       100.0,
-    );
+    ) * glam::Mat4::from_scale(glam::Vec3::new(camera_zoom, camera_zoom, 1.0));
 
     let mut geometry: VertexBuffers<MyVertex, u16> = VertexBuffers::new();
     {
       let mut tessellator = StrokeTessellator::new();
       let mut options = StrokeOptions::default();
-      options.line_width = 0.1;
-      let (w, h) = (1.0, 1.0);
-      let position = glam::Mat4::from_rotation_translation(
-        glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), 20.0f32.to_radians()),
+      options.line_width = 1.0;
+      let radius = 16.0;
+      let transform = glam::Mat4::from_rotation_translation(
+        glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), 45.0f32.to_radians()),
         glam::Vec3::new(0.0, 0.0, -1.0),
-      ) * glam::Mat4::from_translation(glam::Vec3::new(w / -2.0, h / -2.0, 0.0));
+      );
+
       tessellator
-        .tessellate_rectangle(
-          &rect(0.0, 0.0, w, h),
+        .tessellate_circle(
+          Point::new(0.0, 0.0),
+          radius,
           &options,
           &mut BuffersBuilder::new(
             &mut geometry,
             MyVertexConfig {
+              transform,
               color_rgba: glam::Vec4::new(0.0, 1.0, 0.0, 1.0),
-              position,
             },
           ),
         )
         .unwrap();
+
       let (w, h) = (2.0, 2.0);
-      let position = glam::Mat4::from_rotation_translation(
+      let transform = glam::Mat4::from_rotation_translation(
         glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), 20.0f32.to_radians()),
         glam::Vec3::new(0.0, 0.0, -40.0),
       ) * glam::Mat4::from_translation(glam::Vec3::new(w / -2.0, h / -2.0, 0.0));
@@ -449,7 +504,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx) -> Result<(), String> {
             &mut geometry,
             MyVertexConfig {
               color_rgba: glam::Vec4::new(1.0, 0.0, 0.0, 1.0),
-              position,
+              transform,
             },
           ),
         )
@@ -474,8 +529,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx) -> Result<(), String> {
     );
 
     let mvp_mat = {
-      let model = glam::Mat4::from_rotation_z(20.0f32.to_radians());
-      let view = glam::Mat4::look_at_rh(camera_pos, camera_pos + camera_front, camera_up);
+      let model = glam::Mat4::from_rotation_z(0.0f32.to_radians());
       projection * view * model
     };
 
