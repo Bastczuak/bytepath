@@ -9,7 +9,8 @@ use crate::{
   RGB_CLEAR_COLOR,
 };
 use lyon::{
-  math::{rect, Point},
+  geom::{euclid::Box2D, Size},
+  math::Point,
   tessellation::{
     geometry_builder::simple_builder, BuffersBuilder, StrokeOptions, StrokeTessellator, StrokeVertex,
     StrokeVertexConstructor, VertexBuffers,
@@ -491,14 +492,14 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx) -> Result<(), String> {
         )
         .unwrap();
 
-      let (w, h) = (2.0, 2.0);
+      let (w, h) = (16.0, 16.0);
       let transform = glam::Mat4::from_rotation_translation(
         glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), 20.0f32.to_radians()),
         glam::Vec3::new(0.0, 0.0, -40.0),
       ) * glam::Mat4::from_translation(glam::Vec3::new(w / -2.0, h / -2.0, 0.0));
       tessellator
         .tessellate_rectangle(
-          &rect(0.0, 0.0, w, h),
+          &Box2D::from_origin_and_size(Point::new(0.0, 0.0), Size::new(w, h)),
           &options,
           &mut BuffersBuilder::new(
             &mut geometry,
