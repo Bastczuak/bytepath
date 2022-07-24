@@ -303,6 +303,7 @@
 mod color;
 mod components;
 mod environment;
+mod events;
 mod render;
 mod resources;
 mod systems;
@@ -310,11 +311,12 @@ mod systems;
 use crate::{
   components::Position,
   environment::{RGB_CLEAR_COLOR, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH},
+  events::GameEvents,
   render::Gl,
   resources::{Camera, Shake},
-  systems::camera_shake,
+  systems::{camera_shake, player_system},
 };
-use bevy_ecs::{prelude::*, world::World};
+use bevy_ecs::{event::Events, prelude::*, world::World};
 use sdl2::{
   event::{Event, WindowEvent},
   keyboard::Keycode,
@@ -350,8 +352,19 @@ fn main() -> Result<(), String> {
   world.insert_resource(Camera::default());
   world.insert_resource(Shake::default());
   world.insert_resource(Duration::default());
+  world.insert_resource(Events::<GameEvents>::default());
   let mut schedule = Schedule::default();
-  schedule.add_stage("hello", SystemStage::parallel().with_system(camera_shake));
+  schedule.add_stage("events", {
+    let mut stage = SystemStage::parallel();
+    stage.add_system(Events::<GameEvents>::update_system);
+    stage
+  });
+  schedule.add_stage_after("events", "game", {
+    let mut stage = SystemStage::parallel();
+    stage.add_system(player_system);
+    stage.add_system(camera_shake.after(player_system));
+    stage
+  });
 
   let mut event_pump = sdl_context.event_pump()?;
   let frame_dt = Duration::new(0, 1_000_000_000u32 / 60);

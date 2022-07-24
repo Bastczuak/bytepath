@@ -1,20 +1,30 @@
-use crate::{Camera, Shake};
+use crate::{Camera, GameEvents, Shake};
 use bevy_ecs::prelude::*;
 use sdl2::keyboard::Keycode;
 use std::{collections::HashSet, time::Duration};
 
-pub fn camera_shake(
-  mut camera: ResMut<Camera>,
-  mut shake: ResMut<Shake>,
-  keycodes: Res<HashSet<Keycode>>,
-  time: Res<Duration>,
-) {
+pub fn player_system(mut event_writer: EventWriter<GameEvents>, keycodes: Res<HashSet<Keycode>>) {
   for keycode in keycodes.iter() {
     if keycode == &Keycode::S {
-      shake.is_shaking = true;
+      event_writer.send(GameEvents::PlayerDeath);
     }
   }
+}
+
+pub fn camera_shake(
+  mut event_reader: EventReader<GameEvents>,
+  mut camera: ResMut<Camera>,
+  mut shake: ResMut<Shake>,
+  time: Res<Duration>,
+) {
   let Shake { is_shaking, .. } = *shake;
+
+  for event in event_reader.iter() {
+    match event {
+      GameEvents::PlayerDeath => shake.is_shaking = true,
+    }
+  }
+
   if is_shaking {
     shake.time += time.as_secs_f32();
     if shake.time > shake.duration {
