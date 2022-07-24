@@ -338,7 +338,7 @@ fn main() -> Result<(), String> {
     .position_centered()
     .build()
     .map_err(|e| e.to_string())?;
-  let _ctx = sdl_window.gl_create_context().map_err(|e| e)?;
+  let _ctx = sdl_window.gl_create_context()?;
   let gl = Gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
   debug_assert_eq!(gl_attr.context_profile(), GLProfile::Core);
   debug_assert_eq!(gl_attr.context_version(), (3, 3));

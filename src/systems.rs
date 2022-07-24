@@ -10,9 +10,8 @@ pub fn camera_shake(
   time: Res<Duration>,
 ) {
   for keycode in keycodes.iter() {
-    match keycode {
-      Keycode::S => shake.is_shaking = true,
-      _ => {}
+    if keycode == &Keycode::S {
+      shake.is_shaking = true;
     }
   }
   let Shake { is_shaking, .. } = *shake;
