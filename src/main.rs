@@ -314,7 +314,7 @@ use crate::{
   events::GameEvents,
   render::Gl,
   resources::{Camera, Shake},
-  systems::{camera_shake, player_system},
+  systems::{camera_shake_system, player_system},
 };
 use bevy_ecs::{event::Events, prelude::*, world::World};
 use sdl2::{
@@ -326,6 +326,7 @@ use std::{
   collections::HashSet,
   time::{Duration, Instant},
 };
+use crate::systems::player_spawn_system;
 
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
@@ -347,28 +348,36 @@ fn main() -> Result<(), String> {
   let mut opengl_ctx = render::init(&gl)?;
 
   let mut world = World::default();
-  world.spawn().insert(Position { x: 0.0, y: 1.0 });
   world.insert_resource(HashSet::<Keycode>::default());
   world.insert_resource(Camera::default());
   world.insert_resource(Shake::default());
   world.insert_resource(Duration::default());
   world.insert_resource(Events::<GameEvents>::default());
-  let mut schedule = Schedule::default();
-  schedule.add_stage("events", {
+
+  let mut startup_schedule = Schedule::default();
+  startup_schedule.add_stage(
+    "startup",
+    SystemStage::single_threaded().with_system(player_spawn_system),
+  );
+
+  let mut game_schedule = Schedule::default();
+  game_schedule.add_stage("events", {
     let mut stage = SystemStage::parallel();
     stage.add_system(Events::<GameEvents>::update_system);
     stage
   });
-  schedule.add_stage_after("events", "game", {
+  game_schedule.add_stage_after("events", "game", {
     let mut stage = SystemStage::parallel();
     stage.add_system(player_system);
-    stage.add_system(camera_shake.after(player_system));
+    stage.add_system(camera_shake_system.after(player_system));
     stage
   });
 
   let mut event_pump = sdl_context.event_pump()?;
   let frame_dt = Duration::new(0, 1_000_000_000u32 / 60);
   let mut last_time = Instant::now();
+
+  startup_schedule.run(&mut world);
 
   'running: loop {
     let current_time = Instant::now();
@@ -402,12 +411,15 @@ fn main() -> Result<(), String> {
         .collect::<HashSet<Keycode>>();
       *world.resource_mut() = keycodes;
 
-      schedule.run(&mut world);
+      game_schedule.run(&mut world);
 
       frame_time -= dt;
     }
 
-    render::render_gl(&gl, &opengl_ctx, world.resource::<Camera>())?;
+    let entities = world.query::<&Position>()
+      .iter(&world)
+      .collect::<Vec<_>>();
+    render::render_gl(&gl, &opengl_ctx, world.resource::<Camera>(), entities)?;
 
     sdl_window.gl_swap_window();
   }

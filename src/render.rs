@@ -7,7 +7,7 @@ use crate::{
   color::ColorGl,
   environment::{SCREEN_HEIGHT, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH, SCREEN_WIDTH},
   render::gl::types::*,
-  Camera, RGB_CLEAR_COLOR,
+  Camera, Position, RGB_CLEAR_COLOR,
 };
 use lyon::{
   geom::{euclid::Box2D, Size},
@@ -438,7 +438,7 @@ pub fn delete(gl: &Gl, opengl_ctx: &OpenglCtx) {
   }
 }
 
-pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, camera: &Camera) -> Result<(), String> {
+pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, camera: &Camera, positions: Vec<&Position>) -> Result<(), String> {
   let OpenglCtx {
     clear_color,
     frame_buffer,
@@ -462,10 +462,10 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, camera: &Camera) -> Result<(),
     } = *camera;
     let view = glam::Mat4::look_at_rh(camera_pos, camera_pos + camera_front, camera_up);
     let projection = glam::Mat4::orthographic_rh_gl(
-      -SCREEN_WIDTH as f32 * 0.5,
-      SCREEN_WIDTH as f32 * 0.5,
-      -SCREEN_HEIGHT as f32 * 0.5,
-      SCREEN_HEIGHT as f32 * 0.5,
+      0.0,
+      SCREEN_WIDTH as f32,
+      0.0,
+      SCREEN_HEIGHT as f32,
       -100.0,
       100.0,
     ) * glam::Mat4::from_scale(camera_zoom);
@@ -475,45 +475,48 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, camera: &Camera) -> Result<(),
       let mut tessellator = StrokeTessellator::new();
       let mut options = StrokeOptions::default();
       options.line_width = 1.0;
-      let radius = 16.0;
-      let transform = glam::Mat4::from_rotation_translation(
-        glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), 45.0f32.to_radians()),
-        glam::Vec3::new(0.0, 0.0, -1.0),
-      );
+      let radius = 12.0;
 
-      tessellator
-        .tessellate_circle(
-          Point::new(0.0, 0.0),
-          radius,
-          &options,
-          &mut BuffersBuilder::new(
-            &mut geometry,
-            MyVertexConfig {
-              transform,
-              color_rgba: glam::Vec4::new(0.0, 1.0, 0.0, 1.0),
-            },
-          ),
-        )
-        .unwrap();
+      for position in positions {
+        let transform = glam::Mat4::from_rotation_translation(
+          glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), 45.0f32.to_radians()),
+          glam::Vec3::new(position.x, position.y, -1.0),
+        );
 
-      let (w, h) = (16.0, 16.0);
-      let transform = glam::Mat4::from_rotation_translation(
-        glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), 20.0f32.to_radians()),
-        glam::Vec3::new(0.0, 0.0, -40.0),
-      ) * glam::Mat4::from_translation(glam::Vec3::new(w / -2.0, h / -2.0, 0.0));
-      tessellator
-        .tessellate_rectangle(
-          &Box2D::from_origin_and_size(Point::new(0.0, 0.0), Size::new(w, h)),
-          &options,
-          &mut BuffersBuilder::new(
-            &mut geometry,
-            MyVertexConfig {
-              color_rgba: glam::Vec4::new(1.0, 0.0, 0.0, 1.0),
-              transform,
-            },
-          ),
-        )
-        .unwrap();
+        tessellator
+          .tessellate_circle(
+            Point::new(0.0, 0.0),
+            radius,
+            &options,
+            &mut BuffersBuilder::new(
+              &mut geometry,
+              MyVertexConfig {
+                transform,
+                color_rgba: glam::Vec4::new(0.0, 1.0, 0.0, 1.0),
+              },
+            ),
+          )
+          .unwrap();
+
+        let (w, h) = (12.0, 12.0);
+        let transform = glam::Mat4::from_rotation_translation(
+          glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), 20.0f32.to_radians()),
+          glam::Vec3::new(position.x, position.y, -40.0),
+        ) * glam::Mat4::from_translation(glam::Vec3::new(w / -2.0, h / -2.0, 0.0));
+        tessellator
+          .tessellate_rectangle(
+            &Box2D::from_origin_and_size(Point::new(0.0, 0.0), Size::new(w, h)),
+            &options,
+            &mut BuffersBuilder::new(
+              &mut geometry,
+              MyVertexConfig {
+                color_rgba: glam::Vec4::new(1.0, 0.0, 0.0, 1.0),
+                transform,
+              },
+            ),
+          )
+          .unwrap();
+      }
     }
 
     gl.UseProgram(scene.shader_program);

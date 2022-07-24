@@ -1,17 +1,52 @@
-use crate::{Camera, GameEvents, Shake};
+use crate::{
+  components::{Angle, Geometry, Player, Velocity},
+  environment::{SCREEN_HEIGHT, SCREEN_WIDTH},
+  Camera, GameEvents, Position, Shake,
+};
 use bevy_ecs::prelude::*;
 use sdl2::keyboard::Keycode;
 use std::{collections::HashSet, time::Duration};
 
-pub fn player_system(mut event_writer: EventWriter<GameEvents>, keycodes: Res<HashSet<Keycode>>) {
-  for keycode in keycodes.iter() {
-    if keycode == &Keycode::S {
-      event_writer.send(GameEvents::PlayerDeath);
+pub fn player_spawn_system(mut commands: Commands) {
+  commands
+    .spawn()
+    .insert(Player)
+    .insert(Position {
+      x: SCREEN_WIDTH as f32 / 2.0,
+      y: SCREEN_HEIGHT as f32 / 2.0,
+    })
+    .insert(Angle::default())
+    .insert(Velocity::new(100.0))
+    .insert(Geometry { buffers_idx: 0 });
+}
+
+pub fn player_system(
+  mut query: Query<(&Player, &mut Position, &mut Angle, &mut Velocity)>,
+  mut event_writer: EventWriter<GameEvents>,
+  keycodes: Res<HashSet<Keycode>>,
+  time: Res<Duration>,
+) {
+  for (_, mut position, mut angle, mut velocity) in query.iter_mut() {
+    for keycode in keycodes.iter() {
+      match keycode {
+        Keycode::Left => angle.radians += angle.velocity * time.as_secs_f32(),
+        Keycode::Right => angle.radians -= angle.velocity * time.as_secs_f32(),
+        Keycode::S => {
+          event_writer.send(GameEvents::PlayerDeath);
+        }
+        _ => {}
+      }
     }
+    println!("{position:?}");
+
+    position.x += velocity.x * time.as_secs_f32() * f32::cos(angle.radians);
+    position.y += velocity.y * time.as_secs_f32() * f32::sin(angle.radians);
+    velocity.x = velocity.base_x;
+    velocity.y = velocity.base_y;
   }
 }
 
-pub fn camera_shake(
+pub fn camera_shake_system(
   mut event_reader: EventReader<GameEvents>,
   mut camera: ResMut<Camera>,
   mut shake: ResMut<Shake>,
