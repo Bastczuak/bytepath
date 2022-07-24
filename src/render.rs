@@ -6,7 +6,7 @@ use crate::{
   color::ColorGl,
   environment::{SCREEN_HEIGHT, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH, SCREEN_WIDTH},
   render::gl::types::*,
-  RGB_CLEAR_COLOR,
+  Camera, RGB_CLEAR_COLOR,
 };
 use lyon::{
   geom::{euclid::Box2D, Size},
@@ -437,7 +437,7 @@ pub fn delete(gl: &Gl, opengl_ctx: &OpenglCtx) {
   }
 }
 
-pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx) -> Result<(), String> {
+pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, camera: &Camera) -> Result<(), String> {
   let OpenglCtx {
     clear_color,
     frame_buffer,
@@ -452,10 +452,13 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx) -> Result<(), String> {
     gl.Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
 
     //----------------------SCENE----------------------//
-    let camera_pos = glam::Vec3::new(0.0, 0.0, 3.0);
-    let camera_front = glam::Vec3::new(0.0, 0.0, -1.0);
-    let camera_up = glam::Vec3::new(0.0, 1.0, 0.0);
-    let camera_zoom = 1.0;
+    let Camera {
+      camera_pos,
+      camera_front,
+      camera_up,
+      camera_zoom,
+      ..
+    } = *camera;
     let view = glam::Mat4::look_at_rh(camera_pos, camera_pos + camera_front, camera_up);
     let projection = glam::Mat4::orthographic_rh_gl(
       -SCREEN_WIDTH as f32 * 0.5,
@@ -464,7 +467,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx) -> Result<(), String> {
       SCREEN_HEIGHT as f32 * 0.5,
       -100.0,
       100.0,
-    ) * glam::Mat4::from_scale(glam::Vec3::new(camera_zoom, camera_zoom, 1.0));
+    ) * glam::Mat4::from_scale(camera_zoom);
 
     let mut geometry: VertexBuffers<MyVertex, u16> = VertexBuffers::new();
     {

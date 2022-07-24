@@ -302,24 +302,28 @@
 
 mod color;
 mod components;
-mod easings;
 mod environment;
 mod render;
+mod resources;
 mod systems;
 
 use crate::{
   components::Position,
   environment::{RGB_CLEAR_COLOR, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH},
   render::Gl,
-  systems::print_keys,
+  resources::{Camera, Shake},
+  systems::camera_shake,
 };
 use bevy_ecs::{prelude::*, world::World};
-use sdl2::{event::Event, keyboard::Keycode, video::GLProfile};
+use sdl2::{
+  event::{Event, WindowEvent},
+  keyboard::Keycode,
+  video::GLProfile,
+};
 use std::{
   collections::HashSet,
   time::{Duration, Instant},
 };
-use sdl2::event::WindowEvent;
 
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
@@ -342,9 +346,12 @@ fn main() -> Result<(), String> {
 
   let mut world = World::default();
   world.spawn().insert(Position { x: 0.0, y: 1.0 });
-  world.insert_resource::<HashSet<Keycode>>(HashSet::default());
+  world.insert_resource(HashSet::<Keycode>::default());
+  world.insert_resource(Camera::default());
+  world.insert_resource(Shake::default());
+  world.insert_resource(Duration::default());
   let mut schedule = Schedule::default();
-  schedule.add_stage("hello", SystemStage::parallel().with_system(print_keys));
+  schedule.add_stage("hello", SystemStage::parallel().with_system(camera_shake));
 
   let mut event_pump = sdl_context.event_pump()?;
   let frame_dt = Duration::new(0, 1_000_000_000u32 / 60);
@@ -358,6 +365,8 @@ fn main() -> Result<(), String> {
     while frame_time.as_secs_f32() > 0.0 {
       let dt = std::cmp::min(frame_time, frame_dt);
 
+      *world.resource_mut() = dt;
+
       for event in event_pump.poll_iter() {
         match event {
           Event::Quit { .. }
@@ -366,10 +375,9 @@ fn main() -> Result<(), String> {
             ..
           } => break 'running,
           Event::Window {
-            win_event: WindowEvent::Resized(w, h),..
-          } => {
-            opengl_ctx.viewport = (w, h)
-          }
+            win_event: WindowEvent::Resized(w, h),
+            ..
+          } => opengl_ctx.viewport = (w, h),
           _ => {}
         }
       }
@@ -386,7 +394,7 @@ fn main() -> Result<(), String> {
       frame_time -= dt;
     }
 
-    render::render_gl(&gl, &opengl_ctx)?;
+    render::render_gl(&gl, &opengl_ctx, world.resource::<Camera>())?;
 
     sdl_window.gl_swap_window();
   }
