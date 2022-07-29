@@ -326,6 +326,7 @@ use std::{
   collections::HashSet,
   time::{Duration, Instant},
 };
+use crate::components::Angle;
 use crate::systems::player_spawn_system;
 
 fn main() -> Result<(), String> {
@@ -416,7 +417,7 @@ fn main() -> Result<(), String> {
       frame_time -= dt;
     }
 
-    let entities = world.query::<&Position>()
+    let entities = world.query::<(&Position, &Angle)>()
       .iter(&world)
       .collect::<Vec<_>>();
     render::render_gl(&gl, &opengl_ctx, world.resource::<Camera>(), entities)?;

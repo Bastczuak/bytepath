@@ -3,12 +3,7 @@ mod gl {
   include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
 
-use crate::{
-  color::ColorGl,
-  environment::{SCREEN_HEIGHT, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH, SCREEN_WIDTH},
-  render::gl::types::*,
-  Camera, Position, RGB_CLEAR_COLOR,
-};
+use crate::{color::ColorGl, environment::{SCREEN_HEIGHT, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH, SCREEN_WIDTH}, render::gl::types::*, Camera, Position, RGB_CLEAR_COLOR, Angle};
 use lyon::{
   geom::{euclid::Box2D, Size},
   math::Point,
@@ -438,7 +433,7 @@ pub fn delete(gl: &Gl, opengl_ctx: &OpenglCtx) {
   }
 }
 
-pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, camera: &Camera, positions: Vec<&Position>) -> Result<(), String> {
+pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, camera: &Camera, pos_angle: Vec<(&Position, &Angle)>) -> Result<(), String> {
   let OpenglCtx {
     clear_color,
     frame_buffer,
@@ -477,9 +472,9 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, camera: &Camera, positions: Ve
       options.line_width = 1.0;
       let radius = 12.0;
 
-      for position in positions {
+      for (position, angle) in pos_angle {
         let transform = glam::Mat4::from_rotation_translation(
-          glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), 45.0f32.to_radians()),
+          glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), angle.radians),
           glam::Vec3::new(position.x, position.y, -1.0),
         );
 
@@ -500,7 +495,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, camera: &Camera, positions: Ve
 
         let (w, h) = (12.0, 12.0);
         let transform = glam::Mat4::from_rotation_translation(
-          glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), 20.0f32.to_radians()),
+          glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), angle.radians),
           glam::Vec3::new(position.x, position.y, -40.0),
         ) * glam::Mat4::from_translation(glam::Vec3::new(w / -2.0, h / -2.0, 0.0));
         tessellator

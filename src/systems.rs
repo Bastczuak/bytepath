@@ -37,7 +37,6 @@ pub fn player_system(
         _ => {}
       }
     }
-    println!("{position:?}");
 
     position.x += velocity.x * time.as_secs_f32() * f32::cos(angle.radians);
     position.y += velocity.y * time.as_secs_f32() * f32::sin(angle.radians);
