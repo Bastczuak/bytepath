@@ -309,14 +309,13 @@ mod resources;
 mod systems;
 
 use crate::{
-  components::Position,
   environment::{RGB_CLEAR_COLOR, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH},
   events::GameEvents,
   render::Gl,
   resources::{Camera, Shake},
-  systems::{camera_shake_system, player_system},
+  systems::{camera_shake_system, player_spawn_system, player_system},
 };
-use bevy_ecs::{event::Events, prelude::*, world::World};
+use bevy_ecs::{event::Events, prelude::*, system::SystemState, world::World};
 use sdl2::{
   event::{Event, WindowEvent},
   keyboard::Keycode,
@@ -326,9 +325,6 @@ use std::{
   collections::HashSet,
   time::{Duration, Instant},
 };
-use bevy_ecs::system::SystemState;
-use crate::components::Angle;
-use crate::systems::player_spawn_system;
 
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
@@ -429,4 +425,3 @@ fn main() -> Result<(), String> {
 
   Ok(())
 }
-

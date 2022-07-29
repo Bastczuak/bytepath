@@ -1,7 +1,7 @@
 use crate::{
-  components::{Angle, Geometry, Player, Velocity},
+  components::{Player, Transform},
   environment::{SCREEN_HEIGHT, SCREEN_WIDTH},
-  Camera, GameEvents, Position, Shake,
+  Camera, GameEvents, Shake,
 };
 use bevy_ecs::prelude::*;
 use sdl2::keyboard::Keycode;
@@ -10,27 +10,32 @@ use std::{collections::HashSet, time::Duration};
 pub fn player_spawn_system(mut commands: Commands) {
   commands
     .spawn()
-    .insert(Player)
-    .insert(Position {
-      x: SCREEN_WIDTH as f32 / 2.0,
-      y: SCREEN_HEIGHT as f32 / 2.0,
+    .insert(Player {
+      movement_speed: 100.0,
+      rotation_speed: 360.0f32.to_radians(),
     })
-    .insert(Angle::default())
-    .insert(Velocity::new(100.0))
-    .insert(Geometry { buffers_idx: 0 });
+    .insert(Transform {
+      translation: glam::Vec3::new(SCREEN_WIDTH as f32 / 2.0, SCREEN_HEIGHT as f32 / 2.0, 0.0),
+      rotation: glam::Quat::from_rotation_z(std::f32::consts::PI / 2.0),
+    });
 }
 
 pub fn player_system(
-  mut query: Query<(&Player, &mut Position, &mut Angle, &mut Velocity)>,
+  mut query: Query<(&Player, &mut Transform)>,
   mut event_writer: EventWriter<GameEvents>,
   keycodes: Res<HashSet<Keycode>>,
   time: Res<Duration>,
 ) {
-  for (_, mut position, mut angle, mut velocity) in query.iter_mut() {
+  for (player, mut transform) in query.iter_mut() {
+    let mut rotation_factor = 0.0;
+    let mut movement_factor = 1.0;
+    let time = time.as_secs_f32();
+
     for keycode in keycodes.iter() {
       match keycode {
-        Keycode::Left => angle.radians += angle.velocity * time.as_secs_f32(),
-        Keycode::Right => angle.radians -= angle.velocity * time.as_secs_f32(),
+        Keycode::Up => movement_factor = 1.5,
+        Keycode::Left => rotation_factor += 1.0,
+        Keycode::Right => rotation_factor -= 1.0,
         Keycode::S => {
           event_writer.send(GameEvents::PlayerDeath);
         }
@@ -38,10 +43,11 @@ pub fn player_system(
       }
     }
 
-    position.x += velocity.x * time.as_secs_f32() * f32::cos(angle.radians);
-    position.y += velocity.y * time.as_secs_f32() * f32::sin(angle.radians);
-    velocity.x = velocity.base_x;
-    velocity.y = velocity.base_y;
+    transform.rotation *= glam::Quat::from_rotation_z(rotation_factor * player.rotation_speed * time);
+    let movement_direction = transform.rotation * glam::Vec3::X;
+    let movement_distance = movement_factor * player.movement_speed * time;
+    let translation_delta = movement_direction * movement_distance;
+    transform.translation += translation_delta;
   }
 }
 

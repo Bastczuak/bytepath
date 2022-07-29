@@ -3,7 +3,14 @@ mod gl {
   include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
 
-use crate::{color::ColorGl, environment::{SCREEN_HEIGHT, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH, SCREEN_WIDTH}, render::gl::types::*, Camera, Position, RGB_CLEAR_COLOR, Angle};
+use crate::{
+  color::ColorGl,
+  components::Transform,
+  environment::{SCREEN_HEIGHT, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH, SCREEN_WIDTH},
+  render::gl::types::*,
+  Camera, RGB_CLEAR_COLOR,
+};
+use bevy_ecs::system::{Query, Res};
 use lyon::{
   geom::{euclid::Box2D, Size},
   math::Point,
@@ -13,7 +20,6 @@ use lyon::{
   },
 };
 use std::ffi::CString;
-use bevy_ecs::system::{Query, Res};
 
 const FBO_VERTEX_SHADER: &str = r#"
 #version 330 core
@@ -434,10 +440,7 @@ pub fn delete(gl: &Gl, opengl_ctx: &OpenglCtx) {
   }
 }
 
-pub type RenderSystemState<'w, 's> = (
-  Res<'w, Camera>,
-  Query<'w, 's, (&'static Position, &'static Angle)>,
-);
+pub type RenderSystemState<'w, 's> = (Res<'w, Camera>, Query<'w, 's, &'static Transform>);
 
 pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemState) -> Result<(), String> {
   let (camera, query) = render_state;
@@ -463,14 +466,8 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
       ..
     } = *camera;
     let view = glam::Mat4::look_at_rh(camera_pos, camera_pos + camera_front, camera_up);
-    let projection = glam::Mat4::orthographic_rh_gl(
-      0.0,
-      SCREEN_WIDTH as f32,
-      0.0,
-      SCREEN_HEIGHT as f32,
-      -100.0,
-      100.0,
-    ) * glam::Mat4::from_scale(camera_zoom);
+    let projection = glam::Mat4::orthographic_rh_gl(0.0, SCREEN_WIDTH as f32, 0.0, SCREEN_HEIGHT as f32, -100.0, 100.0)
+      * glam::Mat4::from_scale(camera_zoom);
 
     let mut geometry: VertexBuffers<MyVertex, u16> = VertexBuffers::new();
     {
@@ -479,12 +476,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
       options.line_width = 1.0;
       let radius = 12.0;
 
-      for (position, angle) in query.iter() {
-        let transform = glam::Mat4::from_rotation_translation(
-          glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), angle.radians),
-          glam::Vec3::new(position.x, position.y, -1.0),
-        );
-
+      for transform in query.iter() {
         tessellator
           .tessellate_circle(
             Point::new(0.0, 0.0),
@@ -493,7 +485,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
             &mut BuffersBuilder::new(
               &mut geometry,
               MyVertexConfig {
-                transform,
+                transform: transform.mat4(),
                 color_rgba: glam::Vec4::new(0.0, 1.0, 0.0, 1.0),
               },
             ),
@@ -501,10 +493,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
           .unwrap();
 
         let (w, h) = (12.0, 12.0);
-        let transform = glam::Mat4::from_rotation_translation(
-          glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), angle.radians),
-          glam::Vec3::new(position.x, position.y, -40.0),
-        ) * glam::Mat4::from_translation(glam::Vec3::new(w / -2.0, h / -2.0, 0.0));
+        let transform = transform.mat4() * glam::Mat4::from_translation(glam::Vec3::new(w / -2.0, h / -2.0, 0.0));
         tessellator
           .tessellate_rectangle(
             &Box2D::from_origin_and_size(Point::new(0.0, 0.0), Size::new(w, h)),
