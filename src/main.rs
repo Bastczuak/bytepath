@@ -326,6 +326,7 @@ use std::{
   collections::HashSet,
   time::{Duration, Instant},
 };
+use bevy_ecs::system::SystemState;
 use crate::components::Angle;
 use crate::systems::player_spawn_system;
 
@@ -354,6 +355,8 @@ fn main() -> Result<(), String> {
   world.insert_resource(Shake::default());
   world.insert_resource(Duration::default());
   world.insert_resource(Events::<GameEvents>::default());
+
+  let mut render_state = SystemState::<render::RenderSystemState>::new(&mut world);
 
   let mut startup_schedule = Schedule::default();
   startup_schedule.add_stage(
@@ -417,10 +420,7 @@ fn main() -> Result<(), String> {
       frame_time -= dt;
     }
 
-    let entities = world.query::<(&Position, &Angle)>()
-      .iter(&world)
-      .collect::<Vec<_>>();
-    render::render_gl(&gl, &opengl_ctx, world.resource::<Camera>(), entities)?;
+    render::render_gl(&gl, &opengl_ctx, render_state.get_mut(&mut world))?;
 
     sdl_window.gl_swap_window();
   }
@@ -429,3 +429,4 @@ fn main() -> Result<(), String> {
 
   Ok(())
 }
+

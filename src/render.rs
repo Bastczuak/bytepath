@@ -13,6 +13,7 @@ use lyon::{
   },
 };
 use std::ffi::CString;
+use bevy_ecs::system::{Query, Res};
 
 const FBO_VERTEX_SHADER: &str = r#"
 #version 330 core
@@ -433,7 +434,13 @@ pub fn delete(gl: &Gl, opengl_ctx: &OpenglCtx) {
   }
 }
 
-pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, camera: &Camera, pos_angle: Vec<(&Position, &Angle)>) -> Result<(), String> {
+pub type RenderSystemState<'w, 's> = (
+  Res<'w, Camera>,
+  Query<'w, 's, (&'static Position, &'static Angle)>,
+);
+
+pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemState) -> Result<(), String> {
+  let (camera, query) = render_state;
   let OpenglCtx {
     clear_color,
     frame_buffer,
@@ -472,7 +479,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, camera: &Camera, pos_angle: Ve
       options.line_width = 1.0;
       let radius = 12.0;
 
-      for (position, angle) in pos_angle {
+      for (position, angle) in query.iter() {
         let transform = glam::Mat4::from_rotation_translation(
           glam::Quat::from_axis_angle(glam::Vec3::new(0.0, 0.0, 1.0), angle.radians),
           glam::Vec3::new(position.x, position.y, -1.0),
