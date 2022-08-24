@@ -1,3 +1,7 @@
+use crate::render::{gl::types::*, MyVertex};
+use lyon::tessellation::VertexBuffers;
+use std::marker::PhantomData;
+
 #[derive(Debug)]
 pub struct Camera {
   pub camera_pos: glam::Vec3,
@@ -53,3 +57,32 @@ impl Default for Shake {
     }
   }
 }
+
+pub type CircleGeometry = DrawBuffers<Circle>;
+
+#[derive(Debug)]
+pub struct DrawBuffers<Geometry> {
+  pub vao: GLuint,
+  pub vbo: GLuint,
+  pub ebo: GLuint,
+  pub vertex_buffer: VertexBuffers<MyVertex, u16>,
+  _marker: PhantomData<Geometry>,
+}
+
+impl<T> DrawBuffers<T> {
+  pub fn new(vao: GLuint, vbo: GLuint, ebo: GLuint) -> Self {
+    Self {
+      vao,
+      vbo,
+      ebo,
+      vertex_buffer: VertexBuffers::new(),
+      _marker: PhantomData::<T>::default(),
+    }
+  }
+}
+
+#[derive(Debug)]
+pub struct Circle {}
+
+#[derive(Debug)]
+pub struct Rectangle {}

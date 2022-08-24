@@ -1,9 +1,14 @@
 use crate::{
   components::{Player, Transform},
   environment::{SCREEN_HEIGHT, SCREEN_WIDTH},
-  Camera, GameEvents, Shake,
+  render::WithTransformColor,
+  Camera, CircleGeometry, GameEvents, Shake,
 };
 use bevy_ecs::prelude::*;
+use lyon::{
+  math::Point,
+  tessellation::{BuffersBuilder, StrokeOptions, StrokeTessellator},
+};
 use sdl2::keyboard::Keycode;
 use std::{collections::HashSet, time::Duration};
 
@@ -23,6 +28,8 @@ pub fn player_spawn_system(mut commands: Commands) {
 pub fn player_system(
   mut query: Query<(&Player, &mut Transform)>,
   mut event_writer: EventWriter<GameEvents>,
+  mut circles: ResMut<CircleGeometry>,
+  mut tessellator: ResMut<StrokeTessellator>,
   keycodes: Res<HashSet<Keycode>>,
   time: Res<Duration>,
 ) {
@@ -48,6 +55,24 @@ pub fn player_system(
     let movement_distance = movement_factor * player.movement_speed * time;
     let translation_delta = movement_direction * movement_distance;
     transform.translation += translation_delta;
+
+    let mut options = StrokeOptions::default();
+    options.line_width = 1.0;
+    let radius = 12.0;
+    tessellator
+      .tessellate_circle(
+        Point::new(0.0, 0.0),
+        radius,
+        &options,
+        &mut BuffersBuilder::new(
+          &mut circles.vertex_buffer,
+          WithTransformColor {
+            transform: transform.mat4(),
+            color_rgba: glam::Vec4::new(0.0, 1.0, 0.0, 1.0),
+          },
+        ),
+      )
+      .unwrap();
   }
 }
 

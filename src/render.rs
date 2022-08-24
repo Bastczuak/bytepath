@@ -1,25 +1,33 @@
 #[allow(clippy::all)]
-mod gl {
+pub mod gl {
   include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
 
 use crate::{
   color::ColorGl,
-  components::Transform,
   environment::{SCREEN_HEIGHT, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH, SCREEN_WIDTH},
   render::gl::types::*,
-  Camera, RGB_CLEAR_COLOR,
+  resources::DrawBuffers,
+  Camera, CircleGeometry, RGB_CLEAR_COLOR,
 };
-use bevy_ecs::system::{Query, Res};
+use bevy_ecs::system::{Res, ResMut};
 use lyon::{
-  geom::{euclid::Box2D, Size},
   math::Point,
   tessellation::{
-    geometry_builder::simple_builder, BuffersBuilder, StrokeOptions, StrokeTessellator, StrokeVertex,
-    StrokeVertexConstructor, VertexBuffers,
+    geometry_builder::simple_builder, StrokeOptions, StrokeTessellator, StrokeVertex, StrokeVertexConstructor,
+    VertexBuffers,
   },
 };
 use std::ffi::CString;
+
+macro_rules! get_offset {
+  ($type:ty, $field:tt) => {{
+    let dummy = core::mem::MaybeUninit::<$type>::uninit();
+    let dummy_ptr = dummy.as_ptr();
+    let field_ptr = core::ptr::addr_of!((*dummy_ptr).$field);
+    field_ptr as usize - dummy_ptr as usize
+  }};
+}
 
 const FBO_VERTEX_SHADER: &str = r#"
 #version 330 core
@@ -99,7 +107,7 @@ const LOW_RES_QUAD_VERTICES: [f32; 24] = [
 ];
 
 pub struct Gl {
-  inner: std::sync::Arc<gl::Gl>,
+  inner: std::rc::Rc<gl::Gl>,
 }
 
 impl Gl {
@@ -108,7 +116,7 @@ impl Gl {
       F: FnMut(&'static str) -> *const GLvoid,
   {
     Self {
-      inner: std::sync::Arc::new(gl::Gl::load_with(load_fn)),
+      inner: std::rc::Rc::new(gl::Gl::load_with(load_fn)),
     }
   }
 }
@@ -129,22 +137,16 @@ pub struct LowResFrameBuffer {
   shader_program: GLuint,
 }
 
-pub struct Scene {
-  vao: GLuint,
-  vbo: GLuint,
-  ebo: GLuint,
-  shader_program: GLuint,
-}
-
 pub struct OpenglCtx {
   clear_color: ColorGl,
   frame_buffer: LowResFrameBuffer,
-  scene: Scene,
+  scene_program: GLuint,
   pub viewport: (GLsizei, GLsizei),
 }
 
 #[repr(C)]
-struct MyVertex {
+#[derive(Debug)]
+pub struct MyVertex {
   transform_mat4_1: [f32; 4],
   transform_mat4_2: [f32; 4],
   transform_mat4_3: [f32; 4],
@@ -153,12 +155,12 @@ struct MyVertex {
   position: [f32; 2],
 }
 
-struct MyVertexConfig {
-  transform: glam::Mat4,
-  color_rgba: glam::Vec4,
+pub struct WithTransformColor {
+  pub transform: glam::Mat4,
+  pub color_rgba: glam::Vec4,
 }
 
-impl StrokeVertexConstructor<MyVertex> for MyVertexConfig {
+impl StrokeVertexConstructor<MyVertex> for WithTransformColor {
   fn new_vertex(&mut self, vertex: StrokeVertex) -> MyVertex {
     let t = self.transform.to_cols_array_2d();
     MyVertex {
@@ -228,13 +230,112 @@ pub fn create_shader_program(gl: &gl::Gl, vertex_src: &str, fragment_src: &str) 
   link_program(gl, vertex_shader, fragment_shader)
 }
 
-macro_rules! get_offset {
-  ($type:ty, $field:tt) => {{
-    let dummy = core::mem::MaybeUninit::<$type>::uninit();
-    let dummy_ptr = dummy.as_ptr();
-    let field_ptr = core::ptr::addr_of!((*dummy_ptr).$field);
-    field_ptr as usize - dummy_ptr as usize
-  }};
+pub fn calculate_size_for_circles() -> VertexBuffers<Point, u16> {
+  let mut geometry: VertexBuffers<Point, u16> = VertexBuffers::new();
+  let mut vertex_builder = simple_builder(&mut geometry);
+  let mut tessellator = StrokeTessellator::new();
+  tessellator
+    .tessellate_circle(
+      Point::new(0.0, 0.0),
+      16.0,
+      &StrokeOptions::default(),
+      &mut vertex_builder,
+    )
+    .unwrap();
+
+  geometry
+}
+
+pub fn create_draw_buffer<T>(
+  gl: &Gl,
+  opengl_ctx: &OpenglCtx,
+  get_vertex_buffer: fn() -> VertexBuffers<Point, u16>,
+) -> DrawBuffers<T> {
+  unsafe {
+    let (mut vao, mut vbo, mut ebo) = (0, 0, 0);
+    let vertex_buffer = get_vertex_buffer();
+
+    gl.GenVertexArrays(1, &mut vao);
+    gl.GenBuffers(1, &mut vbo);
+    gl.GenBuffers(1, &mut ebo);
+    gl.BindVertexArray(vao);
+    gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
+    gl.BufferData(
+      gl::ARRAY_BUFFER,
+      (std::mem::size_of::<MyVertex>() * vertex_buffer.vertices.len() * 10000) as GLsizeiptr,
+      std::ptr::null(),
+      gl::DYNAMIC_DRAW,
+    );
+    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
+    gl.BufferData(
+      gl::ELEMENT_ARRAY_BUFFER,
+      (std::mem::size_of::<u16>() * vertex_buffer.indices.len() * 10000) as GLsizeiptr,
+      std::ptr::null(),
+      gl::DYNAMIC_DRAW,
+    );
+
+    let transform_attr =
+      gl.GetAttribLocation(opengl_ctx.scene_program, CString::new("Transform").unwrap().into_raw()) as GLuint;
+    gl.EnableVertexAttribArray(transform_attr);
+    gl.VertexAttribPointer(
+      transform_attr,
+      4,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyVertex>()) as i32,
+      get_offset!(MyVertex, transform_mat4_1) as *const GLvoid,
+    );
+    gl.EnableVertexAttribArray(transform_attr + 1);
+    gl.VertexAttribPointer(
+      transform_attr + 1,
+      4,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyVertex>()) as i32,
+      get_offset!(MyVertex, transform_mat4_2) as *const GLvoid,
+    );
+    gl.EnableVertexAttribArray(transform_attr + 2);
+    gl.VertexAttribPointer(
+      transform_attr + 2,
+      4,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyVertex>()) as i32,
+      get_offset!(MyVertex, transform_mat4_3) as *const GLvoid,
+    );
+    gl.EnableVertexAttribArray(transform_attr + 3);
+    gl.VertexAttribPointer(
+      transform_attr + 3,
+      4,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyVertex>()) as i32,
+      get_offset!(MyVertex, transform_mat4_4) as *const GLvoid,
+    );
+    let color_attr = gl.GetAttribLocation(opengl_ctx.scene_program, CString::new("Color").unwrap().into_raw());
+    gl.EnableVertexAttribArray(color_attr as u32);
+    gl.VertexAttribPointer(
+      color_attr as u32,
+      4,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyVertex>()) as i32,
+      get_offset!(MyVertex, color_rgba) as *const GLvoid,
+    );
+
+    let pos_attr = gl.GetAttribLocation(opengl_ctx.scene_program, CString::new("Position").unwrap().into_raw());
+    gl.EnableVertexAttribArray(pos_attr as u32);
+    gl.VertexAttribPointer(
+      pos_attr as u32,
+      2,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyVertex>()) as i32,
+      get_offset!(MyVertex, position) as *const GLvoid,
+    );
+
+    DrawBuffers::<T>::new(vao, vbo, ebo)
+  }
 }
 
 pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
@@ -315,97 +416,6 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
 
     (vao, vbo, fbo, fbo_texture)
   };
-  let (scene_vao, scene_vbo, scene_ebo) = unsafe {
-    let mut geometry: VertexBuffers<Point, u16> = VertexBuffers::new();
-    let mut vertex_builder = simple_builder(&mut geometry);
-    let mut tessellator = StrokeTessellator::new();
-    let mut options = StrokeOptions::default();
-    options.line_width = 0.1;
-    tessellator
-      .tessellate_circle(Point::new(0.0, 0.0), 16.0, &options, &mut vertex_builder)
-      .unwrap();
-    let (mut vao, mut vbo, mut ebo) = (0, 0, 0);
-    gl.GenVertexArrays(1, &mut vao);
-
-    gl.GenBuffers(1, &mut vbo);
-    gl.GenBuffers(1, &mut ebo);
-    gl.BindVertexArray(vao);
-    gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
-    gl.BufferData(
-      gl::ARRAY_BUFFER,
-      (std::mem::size_of::<MyVertex>() * geometry.vertices.len() * 10000) as GLsizeiptr,
-      std::ptr::null(),
-      gl::DYNAMIC_DRAW,
-    );
-    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
-    gl.BufferData(
-      gl::ELEMENT_ARRAY_BUFFER,
-      (std::mem::size_of::<u16>() * geometry.indices.len() * 10000) as GLsizeiptr,
-      std::ptr::null(),
-      gl::DYNAMIC_DRAW,
-    );
-
-    let transform_attr = gl.GetAttribLocation(scene_prg, CString::new("Transform").unwrap().into_raw()) as GLuint;
-    gl.EnableVertexAttribArray(transform_attr);
-    gl.VertexAttribPointer(
-      transform_attr,
-      4,
-      gl::FLOAT,
-      gl::FALSE,
-      (std::mem::size_of::<MyVertex>()) as i32,
-      get_offset!(MyVertex, transform_mat4_1) as *const GLvoid,
-    );
-    gl.EnableVertexAttribArray(transform_attr + 1);
-    gl.VertexAttribPointer(
-      transform_attr + 1,
-      4,
-      gl::FLOAT,
-      gl::FALSE,
-      (std::mem::size_of::<MyVertex>()) as i32,
-      get_offset!(MyVertex, transform_mat4_2) as *const GLvoid,
-    );
-    gl.EnableVertexAttribArray(transform_attr + 2);
-    gl.VertexAttribPointer(
-      transform_attr + 2,
-      4,
-      gl::FLOAT,
-      gl::FALSE,
-      (std::mem::size_of::<MyVertex>()) as i32,
-      get_offset!(MyVertex, transform_mat4_3) as *const GLvoid,
-    );
-    gl.EnableVertexAttribArray(transform_attr + 3);
-    gl.VertexAttribPointer(
-      transform_attr + 3,
-      4,
-      gl::FLOAT,
-      gl::FALSE,
-      (std::mem::size_of::<MyVertex>()) as i32,
-      get_offset!(MyVertex, transform_mat4_4) as *const GLvoid,
-    );
-    let color_attr = gl.GetAttribLocation(scene_prg, CString::new("Color").unwrap().into_raw());
-    gl.EnableVertexAttribArray(color_attr as u32);
-    gl.VertexAttribPointer(
-      color_attr as u32,
-      4,
-      gl::FLOAT,
-      gl::FALSE,
-      (std::mem::size_of::<MyVertex>()) as i32,
-      get_offset!(MyVertex, color_rgba) as *const GLvoid,
-    );
-
-    let pos_attr = gl.GetAttribLocation(scene_prg, CString::new("Position").unwrap().into_raw());
-    gl.EnableVertexAttribArray(pos_attr as u32);
-    gl.VertexAttribPointer(
-      pos_attr as u32,
-      2,
-      gl::FLOAT,
-      gl::FALSE,
-      (std::mem::size_of::<MyVertex>()) as i32,
-      get_offset!(MyVertex, position) as *const GLvoid,
-    );
-
-    (vao, vbo, ebo)
-  };
 
   Ok(OpenglCtx {
     clear_color: ColorGl::from(RGB_CLEAR_COLOR),
@@ -416,39 +426,20 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
       texture2d: fbo_texture,
       shader_program: low_res_prg,
     },
-    scene: Scene {
-      vao: scene_vao,
-      vbo: scene_vbo,
-      ebo: scene_ebo,
-      shader_program: scene_prg,
-    },
+    scene_program: scene_prg,
     viewport: (SCREEN_RENDER_WIDTH as GLsizei, SCREEN_RENDER_HEIGHT as GLsizei),
   })
 }
 
-pub fn delete(gl: &Gl, opengl_ctx: &OpenglCtx) {
-  unsafe {
-    gl.DeleteVertexArrays(1, &opengl_ctx.frame_buffer.vao);
-    gl.DeleteVertexArrays(1, &opengl_ctx.scene.vao);
-    gl.DeleteBuffers(1, &opengl_ctx.frame_buffer.vbo);
-    gl.DeleteBuffers(1, &opengl_ctx.frame_buffer.texture2d);
-    gl.DeleteBuffers(1, &opengl_ctx.scene.vbo);
-    gl.DeleteBuffers(1, &opengl_ctx.scene.ebo);
-    gl.DeleteProgram(opengl_ctx.frame_buffer.shader_program);
-    gl.DeleteProgram(opengl_ctx.scene.shader_program);
-    gl.DeleteFramebuffers(1, &opengl_ctx.frame_buffer.fbo);
-  }
-}
-
-pub type RenderSystemState<'w, 's> = (Res<'w, Camera>, Query<'w, 's, &'static Transform>);
+pub type RenderSystemState<'w, 's> = (Res<'w, Camera>, ResMut<'w, CircleGeometry>);
 
 pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemState) -> Result<(), String> {
-  let (camera, query) = render_state;
+  let (camera, mut circles) = render_state;
   let OpenglCtx {
     clear_color,
     frame_buffer,
+    scene_program,
     viewport: (w, h),
-    scene,
   } = opengl_ctx;
   unsafe {
     gl.BindFramebuffer(gl::FRAMEBUFFER, frame_buffer.fbo);
@@ -469,62 +460,21 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
     let projection = glam::Mat4::orthographic_rh_gl(0.0, SCREEN_WIDTH as f32, 0.0, SCREEN_HEIGHT as f32, -100.0, 100.0)
       * glam::Mat4::from_scale(camera_zoom);
 
-    let mut geometry: VertexBuffers<MyVertex, u16> = VertexBuffers::new();
-    {
-      let mut tessellator = StrokeTessellator::new();
-      let mut options = StrokeOptions::default();
-      options.line_width = 1.0;
-      let radius = 12.0;
-
-      for transform in query.iter() {
-        tessellator
-          .tessellate_circle(
-            Point::new(0.0, 0.0),
-            radius,
-            &options,
-            &mut BuffersBuilder::new(
-              &mut geometry,
-              MyVertexConfig {
-                transform: transform.mat4(),
-                color_rgba: glam::Vec4::new(0.0, 1.0, 0.0, 1.0),
-              },
-            ),
-          )
-          .unwrap();
-
-        let (w, h) = (12.0, 12.0);
-        let transform = transform.mat4() * glam::Mat4::from_translation(glam::Vec3::new(w / -2.0, h / -2.0, 0.0));
-        tessellator
-          .tessellate_rectangle(
-            &Box2D::from_origin_and_size(Point::new(0.0, 0.0), Size::new(w, h)),
-            &options,
-            &mut BuffersBuilder::new(
-              &mut geometry,
-              MyVertexConfig {
-                color_rgba: glam::Vec4::new(1.0, 0.0, 0.0, 1.0),
-                transform,
-              },
-            ),
-          )
-          .unwrap();
-      }
-    }
-
-    gl.UseProgram(scene.shader_program);
-    gl.BindVertexArray(scene.vao);
-    gl.BindBuffer(gl::ARRAY_BUFFER, scene.vbo);
+    gl.UseProgram(*scene_program);
+    gl.BindVertexArray(circles.vao);
+    gl.BindBuffer(gl::ARRAY_BUFFER, circles.vbo);
     gl.BufferSubData(
       gl::ARRAY_BUFFER,
       0,
-      (geometry.vertices.len() * std::mem::size_of::<MyVertex>()) as GLsizeiptr,
-      geometry.vertices.as_ptr() as *const GLvoid,
+      (circles.vertex_buffer.vertices.len() * std::mem::size_of::<MyVertex>()) as GLsizeiptr,
+      circles.vertex_buffer.vertices.as_ptr() as *const GLvoid,
     );
-    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, scene.ebo);
+    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, circles.ebo);
     gl.BufferSubData(
       gl::ELEMENT_ARRAY_BUFFER,
       0,
-      (geometry.indices.len() * std::mem::size_of::<u16>()) as GLsizeiptr,
-      geometry.indices.as_ptr() as *const GLvoid,
+      (circles.vertex_buffer.indices.len() * std::mem::size_of::<u16>()) as GLsizeiptr,
+      circles.vertex_buffer.indices.as_ptr() as *const GLvoid,
     );
 
     let mvp_mat = {
@@ -533,7 +483,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
     };
 
     gl.UniformMatrix4fv(
-      gl.GetUniformLocation(scene.shader_program, CString::new("uMVP").unwrap().into_raw()),
+      gl.GetUniformLocation(*scene_program, CString::new("uMVP").unwrap().into_raw()),
       1,
       gl::FALSE,
       mvp_mat.to_cols_array().as_ptr(),
@@ -541,10 +491,13 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
 
     gl.DrawElements(
       gl::TRIANGLES,
-      geometry.indices.len() as i32,
+      circles.vertex_buffer.indices.len() as i32,
       gl::UNSIGNED_SHORT,
       std::ptr::null(),
     );
+
+    circles.vertex_buffer.vertices.clear();
+    circles.vertex_buffer.indices.clear();
     //----------------------SCENE----------------------//
 
     gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
@@ -557,4 +510,19 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
     gl.DrawArrays(gl::TRIANGLES, 0, 6);
   }
   Ok(())
+}
+
+pub fn delete(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemState) {
+  let (_, circles) = render_state;
+  unsafe {
+    gl.DeleteVertexArrays(1, &opengl_ctx.frame_buffer.vao);
+    gl.DeleteVertexArrays(1, &circles.vao);
+    gl.DeleteBuffers(1, &opengl_ctx.frame_buffer.vbo);
+    gl.DeleteBuffers(1, &opengl_ctx.frame_buffer.texture2d);
+    gl.DeleteBuffers(1, &circles.vbo);
+    gl.DeleteBuffers(1, &circles.ebo);
+    gl.DeleteProgram(opengl_ctx.frame_buffer.shader_program);
+    gl.DeleteProgram(opengl_ctx.scene_program);
+    gl.DeleteFramebuffers(1, &opengl_ctx.frame_buffer.fbo);
+  }
 }

@@ -312,10 +312,12 @@ use crate::{
   environment::{RGB_CLEAR_COLOR, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH},
   events::GameEvents,
   render::Gl,
-  resources::{Camera, Shake},
+  resources::{Camera, Circle, CircleGeometry, Shake},
   systems::{camera_shake_system, player_spawn_system, player_system},
 };
 use bevy_ecs::{event::Events, prelude::*, system::SystemState, world::World};
+use lyon::tessellation::StrokeTessellator;
+use render::{calculate_size_for_circles, create_draw_buffer};
 use sdl2::{
   event::{Event, WindowEvent},
   keyboard::Keycode,
@@ -351,6 +353,12 @@ fn main() -> Result<(), String> {
   world.insert_resource(Shake::default());
   world.insert_resource(Duration::default());
   world.insert_resource(Events::<GameEvents>::default());
+  world.insert_resource(StrokeTessellator::new());
+  world.insert_resource(create_draw_buffer::<Circle>(
+    &gl,
+    &opengl_ctx,
+    calculate_size_for_circles,
+  ));
 
   let mut render_state = SystemState::<render::RenderSystemState>::new(&mut world);
 
@@ -421,7 +429,7 @@ fn main() -> Result<(), String> {
     sdl_window.gl_swap_window();
   }
 
-  render::delete(&gl, &opengl_ctx);
+  render::delete(&gl, &opengl_ctx, render_state.get_mut(&mut world));
 
   Ok(())
 }
