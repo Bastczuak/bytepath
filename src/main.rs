@@ -307,6 +307,7 @@ mod events;
 mod render;
 mod resources;
 mod systems;
+mod easings;
 
 use crate::{
   environment::{RGB_CLEAR_COLOR, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH},
@@ -316,7 +317,7 @@ use crate::{
   systems::{camera_shake_system, player_spawn_system, player_system},
 };
 use bevy_ecs::{event::Events, prelude::*, system::SystemState, world::World};
-use lyon::tessellation::StrokeTessellator;
+use lyon::tessellation::{FillTessellator, StrokeTessellator};
 use render::{calculate_size_for_circles, create_draw_buffer};
 use sdl2::{
   event::{Event, WindowEvent},
@@ -327,6 +328,9 @@ use std::{
   collections::HashSet,
   time::{Duration, Instant},
 };
+use systems::shooting_system;
+use crate::render::calculate_size_for_quads;
+use crate::resources::Quad;
 
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
@@ -354,10 +358,16 @@ fn main() -> Result<(), String> {
   world.insert_resource(Duration::default());
   world.insert_resource(Events::<GameEvents>::default());
   world.insert_resource(StrokeTessellator::new());
+  world.insert_resource(FillTessellator::new());
   world.insert_resource(create_draw_buffer::<Circle>(
     &gl,
     &opengl_ctx,
     calculate_size_for_circles,
+  ));
+  world.insert_resource(create_draw_buffer::<Quad>(
+    &gl,
+    &opengl_ctx,
+    calculate_size_for_quads,
   ));
 
   let mut render_state = SystemState::<render::RenderSystemState>::new(&mut world);
@@ -378,6 +388,7 @@ fn main() -> Result<(), String> {
     let mut stage = SystemStage::parallel();
     stage.add_system(player_system);
     stage.add_system(camera_shake_system.after(player_system));
+    stage.add_system(shooting_system.after(player_system));
     stage
   });
 

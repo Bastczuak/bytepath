@@ -19,6 +19,8 @@ use lyon::{
   },
 };
 use std::ffi::CString;
+use lyon::lyon_tessellation::{FillOptions, FillTessellator, FillVertex, FillVertexConstructor};
+use crate::resources::QuadGeometry;
 
 macro_rules! get_offset {
   ($type:ty, $field:tt) => {{
@@ -174,6 +176,20 @@ impl StrokeVertexConstructor<MyVertex> for WithTransformColor {
   }
 }
 
+impl FillVertexConstructor<MyVertex> for WithTransformColor {
+  fn new_vertex(&mut self, vertex: FillVertex) -> MyVertex {
+    let t = self.transform.to_cols_array_2d();
+    MyVertex {
+      transform_mat4_1: t[0],
+      transform_mat4_2: t[1],
+      transform_mat4_3: t[2],
+      transform_mat4_4: t[3],
+      color_rgba: self.color_rgba.to_array(),
+      position: vertex.position().to_array(),
+    }
+  }
+}
+
 unsafe fn create_error_buffer(length: usize) -> CString {
   let mut buffer = Vec::with_capacity(length + 1);
   buffer.extend([b' '].iter().cycle().take(length));
@@ -239,6 +255,22 @@ pub fn calculate_size_for_circles() -> VertexBuffers<Point, u16> {
       Point::new(0.0, 0.0),
       16.0,
       &StrokeOptions::default(),
+      &mut vertex_builder,
+    )
+    .unwrap();
+
+  geometry
+}
+
+pub fn calculate_size_for_quads() -> VertexBuffers<Point, u16> {
+  let mut geometry: VertexBuffers<Point, u16> = VertexBuffers::new();
+  let mut vertex_builder = simple_builder(&mut geometry);
+  let mut tessellator = FillTessellator::new();
+  tessellator
+    .tessellate_circle(
+      Point::new(0.0, 0.0),
+      16.0,
+      &FillOptions::default(),
       &mut vertex_builder,
     )
     .unwrap();
@@ -431,10 +463,10 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
   })
 }
 
-pub type RenderSystemState<'w, 's> = (Res<'w, Camera>, ResMut<'w, CircleGeometry>);
+pub type RenderSystemState<'w, 's> = (Res<'w, Camera>, ResMut<'w, CircleGeometry>, ResMut<'w, QuadGeometry>);
 
 pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemState) -> Result<(), String> {
-  let (camera, mut circles) = render_state;
+  let (camera, mut circles, mut quads) = render_state;
   let OpenglCtx {
     clear_color,
     frame_buffer,
@@ -461,6 +493,17 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
       * glam::Mat4::from_scale(camera_zoom);
 
     gl.UseProgram(*scene_program);
+    let mvp_mat = {
+      let model = glam::Mat4::from_rotation_z(0.0f32.to_radians());
+      projection * view * model
+    };
+    gl.UniformMatrix4fv(
+      gl.GetUniformLocation(*scene_program, CString::new("uMVP").unwrap().into_raw()),
+      1,
+      gl::FALSE,
+      mvp_mat.to_cols_array().as_ptr(),
+    );
+
     gl.BindVertexArray(circles.vao);
     gl.BindBuffer(gl::ARRAY_BUFFER, circles.vbo);
     gl.BufferSubData(
@@ -476,19 +519,6 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
       (circles.vertex_buffer.indices.len() * std::mem::size_of::<u16>()) as GLsizeiptr,
       circles.vertex_buffer.indices.as_ptr() as *const GLvoid,
     );
-
-    let mvp_mat = {
-      let model = glam::Mat4::from_rotation_z(0.0f32.to_radians());
-      projection * view * model
-    };
-
-    gl.UniformMatrix4fv(
-      gl.GetUniformLocation(*scene_program, CString::new("uMVP").unwrap().into_raw()),
-      1,
-      gl::FALSE,
-      mvp_mat.to_cols_array().as_ptr(),
-    );
-
     gl.DrawElements(
       gl::TRIANGLES,
       circles.vertex_buffer.indices.len() as i32,
@@ -496,8 +526,32 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
       std::ptr::null(),
     );
 
+    gl.BindVertexArray(quads.vao);
+    gl.BindBuffer(gl::ARRAY_BUFFER, quads.vbo);
+    gl.BufferSubData(
+      gl::ARRAY_BUFFER,
+      0,
+      (quads.vertex_buffer.vertices.len() * std::mem::size_of::<MyVertex>()) as GLsizeiptr,
+      quads.vertex_buffer.vertices.as_ptr() as *const GLvoid,
+    );
+    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, quads.ebo);
+    gl.BufferSubData(
+      gl::ELEMENT_ARRAY_BUFFER,
+      0,
+      (quads.vertex_buffer.indices.len() * std::mem::size_of::<u16>()) as GLsizeiptr,
+      quads.vertex_buffer.indices.as_ptr() as *const GLvoid,
+    );
+    gl.DrawElements(
+      gl::TRIANGLES,
+      quads.vertex_buffer.indices.len() as i32,
+      gl::UNSIGNED_SHORT,
+      std::ptr::null(),
+    );
+
     circles.vertex_buffer.vertices.clear();
     circles.vertex_buffer.indices.clear();
+    quads.vertex_buffer.vertices.clear();
+    quads.vertex_buffer.indices.clear();
     //----------------------SCENE----------------------//
 
     gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
@@ -513,14 +567,17 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
 }
 
 pub fn delete(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemState) {
-  let (_, circles) = render_state;
+  let (_, circles, quads) = render_state;
   unsafe {
     gl.DeleteVertexArrays(1, &opengl_ctx.frame_buffer.vao);
     gl.DeleteVertexArrays(1, &circles.vao);
+    gl.DeleteVertexArrays(1, &quads.vao);
     gl.DeleteBuffers(1, &opengl_ctx.frame_buffer.vbo);
     gl.DeleteBuffers(1, &opengl_ctx.frame_buffer.texture2d);
     gl.DeleteBuffers(1, &circles.vbo);
+    gl.DeleteBuffers(1, &quads.vbo);
     gl.DeleteBuffers(1, &circles.ebo);
+    gl.DeleteBuffers(1, &quads.ebo);
     gl.DeleteProgram(opengl_ctx.frame_buffer.shader_program);
     gl.DeleteProgram(opengl_ctx.scene_program);
     gl.DeleteFramebuffers(1, &opengl_ctx.frame_buffer.fbo);

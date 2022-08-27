@@ -1,3 +1,6 @@
+use crate::components::{Interpolation, ShootingEffect};
+use crate::easings::ease_in_out_cubic;
+use crate::resources::QuadGeometry;
 use crate::{
   components::{Player, Transform},
   environment::{SCREEN_HEIGHT, SCREEN_WIDTH},
@@ -5,9 +8,11 @@ use crate::{
   Camera, CircleGeometry, GameEvents, Shake,
 };
 use bevy_ecs::prelude::*;
+use lyon::geom::{Box2D, Size};
+use lyon::lyon_tessellation::FillOptions;
 use lyon::{
   math::Point,
-  tessellation::{BuffersBuilder, StrokeOptions, StrokeTessellator},
+  tessellation::{BuffersBuilder, FillTessellator, StrokeOptions, StrokeTessellator},
 };
 use sdl2::keyboard::Keycode;
 use std::{collections::HashSet, time::Duration};
@@ -23,6 +28,42 @@ pub fn player_spawn_system(mut commands: Commands) {
       translation: glam::Vec3::new(SCREEN_WIDTH as f32 / 2.0, SCREEN_HEIGHT as f32 / 2.0, 0.0),
       rotation: glam::Quat::from_rotation_z(std::f32::consts::PI / 2.0),
     });
+  commands
+    .spawn()
+    .insert(ShootingEffect {})
+    .insert(Interpolation::new(vec![(8.0, 0.0)], 0.24));
+}
+
+pub fn shooting_system(
+  players: Query<(&Player, &Transform)>,
+  mut effects: Query<(&ShootingEffect, &mut Interpolation)>,
+  mut quads: ResMut<QuadGeometry>,
+  mut tessellator: ResMut<FillTessellator>,
+  time: Res<Duration>,
+) {
+  for (_, transform) in players.iter() {
+    for (_, mut interpolation) in effects.iter_mut() {
+      let (values, _) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
+      let mat4 = glam::Mat4::from_rotation_translation(
+        transform.rotation * glam::Quat::from_rotation_z(-45.0f32.to_radians()),
+        transform.translation,
+      ) * glam::Mat4::from_translation(glam::vec3(8.0 - values[0] / 2.0, 8.0 - values[0] / 2.0, 1.0));
+
+      tessellator
+        .tessellate_rectangle(
+          &Box2D::from_size(Size::new(values[0], values[0])),
+          &FillOptions::default(),
+          &mut BuffersBuilder::new(
+            &mut quads.vertex_buffer,
+            WithTransformColor {
+              color_rgba: glam::Vec4::new(1.0, 1.0, 1.0, 1.0),
+              transform: mat4,
+            },
+          ),
+        )
+        .unwrap();
+    }
+  }
 }
 
 pub fn player_system(
@@ -58,17 +99,16 @@ pub fn player_system(
 
     let mut options = StrokeOptions::default();
     options.line_width = 1.0;
-    let radius = 12.0;
     tessellator
       .tessellate_circle(
         Point::new(0.0, 0.0),
-        radius,
+        12.0,
         &options,
         &mut BuffersBuilder::new(
           &mut circles.vertex_buffer,
           WithTransformColor {
             transform: transform.mat4(),
-            color_rgba: glam::Vec4::new(0.0, 1.0, 0.0, 1.0),
+            color_rgba: glam::Vec4::new(1.0, 1.0, 1.0, 1.0),
           },
         ),
       )
@@ -110,7 +150,11 @@ pub fn camera_shake_system(
     fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
       move |n| {
         let n = n as usize;
-        if n >= samples.len() { 0.0 } else { samples[n] }
+        if n >= samples.len() {
+          0.0
+        } else {
+          samples[n]
+        }
       }
     }
     let noise_x = noise(&shake.samples_x);

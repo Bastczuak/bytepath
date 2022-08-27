@@ -59,6 +59,7 @@ impl Default for Shake {
 }
 
 pub type CircleGeometry = DrawBuffers<Circle>;
+pub type QuadGeometry = DrawBuffers<Quad>;
 
 #[derive(Debug)]
 pub struct DrawBuffers<Geometry> {
@@ -86,3 +87,6 @@ pub struct Circle {}
 
 #[derive(Debug)]
 pub struct Rectangle {}
+
+#[derive(Debug)]
+pub struct Quad {}
