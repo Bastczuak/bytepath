@@ -1,16 +1,15 @@
-use crate::components::{Interpolation};
-use crate::easings::ease_in_out_cubic;
-use crate::resources::QuadGeometry;
 use crate::{
-  components::{Player, Transform},
+  components::{Interpolation, Player, Transform},
+  easings::ease_in_out_cubic,
   environment::{SCREEN_HEIGHT, SCREEN_WIDTH},
   render::WithTransformColor,
+  resources::QuadGeometry,
   Camera, CircleGeometry, GameEvents, Shake,
 };
 use bevy_ecs::prelude::*;
-use lyon::geom::{Box2D, Size};
-use lyon::lyon_tessellation::FillOptions;
 use lyon::{
+  geom::{Box2D, Size},
+  lyon_tessellation::FillOptions,
   math::Point,
   tessellation::{BuffersBuilder, FillTessellator, StrokeOptions, StrokeTessellator},
 };
@@ -48,15 +47,15 @@ pub fn shooting_system(
       .tessellate_rectangle(
         &Box2D::from_size(Size::new(values[0], values[0])),
         &FillOptions::default(),
-          &mut BuffersBuilder::new(
-            &mut quads.vertex_buffer,
-            WithTransformColor {
-              color_rgba: glam::Vec4::new(1.0, 1.0, 1.0, 1.0),
-              transform: mat4,
-            },
-          ),
-        )
-        .unwrap();
+        &mut BuffersBuilder::new(
+          &mut quads.vertex_buffer,
+          WithTransformColor {
+            color_rgba: glam::Vec4::new(1.0, 1.0, 1.0, 1.0),
+            transform: mat4,
+          },
+        ),
+      )
+      .unwrap();
   }
 }
 
@@ -144,11 +143,7 @@ pub fn camera_shake_system(
     fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
       move |n| {
         let n = n as usize;
-        if n >= samples.len() {
-          0.0
-        } else {
-          samples[n]
-        }
+        if n >= samples.len() { 0.0 } else { samples[n] }
       }
     }
     let noise_x = noise(&shake.samples_x);

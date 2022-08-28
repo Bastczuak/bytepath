@@ -1,5 +1,5 @@
-use bevy_ecs::prelude::*;
 use crate::easings::EasingFunction;
+use bevy_ecs::prelude::*;
 
 #[derive(Component, Debug)]
 pub struct Player {

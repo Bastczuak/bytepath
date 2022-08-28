@@ -7,11 +7,12 @@ use crate::{
   color::ColorGl,
   environment::{SCREEN_HEIGHT, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH, SCREEN_WIDTH},
   render::gl::types::*,
-  resources::DrawBuffers,
+  resources::{DrawBuffers, QuadGeometry},
   Camera, CircleGeometry, RGB_CLEAR_COLOR,
 };
 use bevy_ecs::system::{Res, ResMut};
 use lyon::{
+  lyon_tessellation::{FillOptions, FillTessellator, FillVertex, FillVertexConstructor},
   math::Point,
   tessellation::{
     geometry_builder::simple_builder, StrokeOptions, StrokeTessellator, StrokeVertex, StrokeVertexConstructor,
@@ -19,8 +20,6 @@ use lyon::{
   },
 };
 use std::ffi::CString;
-use lyon::lyon_tessellation::{FillOptions, FillTessellator, FillVertex, FillVertexConstructor};
-use crate::resources::QuadGeometry;
 
 macro_rules! get_offset {
   ($type:ty, $field:tt) => {{
@@ -267,12 +266,7 @@ pub fn calculate_size_for_quads() -> VertexBuffers<Point, u16> {
   let mut vertex_builder = simple_builder(&mut geometry);
   let mut tessellator = FillTessellator::new();
   tessellator
-    .tessellate_circle(
-      Point::new(0.0, 0.0),
-      16.0,
-      &FillOptions::default(),
-      &mut vertex_builder,
-    )
+    .tessellate_circle(Point::new(0.0, 0.0), 16.0, &FillOptions::default(), &mut vertex_builder)
     .unwrap();
 
   geometry
