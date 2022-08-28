@@ -7,9 +7,6 @@ pub struct Player {
   pub rotation_speed: f32,
 }
 
-#[derive(Component, Debug)]
-pub struct ShootingEffect {}
-
 #[derive(Component, Debug, Default)]
 pub struct Transform {
   pub rotation: glam::Quat,

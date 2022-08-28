@@ -1,4 +1,4 @@
-use crate::components::{Interpolation, ShootingEffect};
+use crate::components::{Interpolation};
 use crate::easings::ease_in_out_cubic;
 use crate::resources::QuadGeometry;
 use crate::{
@@ -26,33 +26,28 @@ pub fn player_spawn_system(mut commands: Commands) {
     })
     .insert(Transform {
       translation: glam::Vec3::new(SCREEN_WIDTH as f32 / 2.0, SCREEN_HEIGHT as f32 / 2.0, 0.0),
-      rotation: glam::Quat::from_rotation_z(std::f32::consts::PI / 2.0),
-    });
-  commands
-    .spawn()
-    .insert(ShootingEffect {})
+      ..Default::default()
+    })
     .insert(Interpolation::new(vec![(8.0, 0.0)], 0.24));
 }
 
 pub fn shooting_system(
-  players: Query<(&Player, &Transform)>,
-  mut effects: Query<(&ShootingEffect, &mut Interpolation)>,
+  mut query: Query<(&Player, &Transform, &mut Interpolation)>,
   mut quads: ResMut<QuadGeometry>,
   mut tessellator: ResMut<FillTessellator>,
   time: Res<Duration>,
 ) {
-  for (_, transform) in players.iter() {
-    for (_, mut interpolation) in effects.iter_mut() {
-      let (values, _) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
-      let mat4 = glam::Mat4::from_rotation_translation(
-        transform.rotation * glam::Quat::from_rotation_z(-45.0f32.to_radians()),
-        transform.translation,
-      ) * glam::Mat4::from_translation(glam::vec3(8.0 - values[0] / 2.0, 8.0 - values[0] / 2.0, 1.0));
+  for (_, transform, mut interpolation) in query.iter_mut() {
+    let (values, _) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
+    let mat4 = glam::Mat4::from_rotation_translation(
+      transform.rotation * glam::Quat::from_rotation_z(45.0f32.to_radians()),
+      transform.translation,
+    ) * glam::Mat4::from_translation(glam::vec3(8.0 - values[0] / 2.0, 8.0 - values[0] / 2.0, 1.0));
 
-      tessellator
-        .tessellate_rectangle(
-          &Box2D::from_size(Size::new(values[0], values[0])),
-          &FillOptions::default(),
+    tessellator
+      .tessellate_rectangle(
+        &Box2D::from_size(Size::new(values[0], values[0])),
+        &FillOptions::default(),
           &mut BuffersBuilder::new(
             &mut quads.vertex_buffer,
             WithTransformColor {
@@ -62,7 +57,6 @@ pub fn shooting_system(
           ),
         )
         .unwrap();
-    }
   }
 }
 
@@ -92,7 +86,7 @@ pub fn player_system(
     }
 
     transform.rotation *= glam::Quat::from_rotation_z(rotation_factor * player.rotation_speed * time);
-    let movement_direction = transform.rotation * glam::Vec3::X;
+    let movement_direction = transform.rotation * glam::Vec3::Y;
     let movement_distance = movement_factor * player.movement_speed * time;
     let translation_delta = movement_direction * movement_distance;
     transform.translation += translation_delta;
