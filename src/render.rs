@@ -469,7 +469,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
   } = opengl_ctx;
 
   unsafe fn draw<T>(gl: &Gl, buffers: &mut DrawBuffers<T>) {
-    gl.BindVertexArray(vao);
+    gl.BindVertexArray(buffers.vao);
     gl.BindBuffer(gl::ARRAY_BUFFER, buffers.vbo);
     gl.BufferSubData(
       gl::ARRAY_BUFFER,
