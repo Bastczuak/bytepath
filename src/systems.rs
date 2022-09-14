@@ -91,7 +91,7 @@ pub fn player_system(
     transform.translation += translation_delta;
 
     let mut options = StrokeOptions::default();
-    options.line_width = 1.0;
+    options.line_width = 1.5;
     tessellator
       .tessellate_circle(
         Point::new(0.0, 0.0),

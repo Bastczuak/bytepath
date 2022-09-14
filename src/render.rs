@@ -467,6 +467,33 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
     scene_program,
     viewport: (w, h),
   } = opengl_ctx;
+
+  unsafe fn draw<T>(gl: &Gl, buffers: &mut DrawBuffers<T>) {
+    gl.BindVertexArray(vao);
+    gl.BindBuffer(gl::ARRAY_BUFFER, buffers.vbo);
+    gl.BufferSubData(
+      gl::ARRAY_BUFFER,
+      0,
+      (buffers.vertex_buffer.vertices.len() * std::mem::size_of::<MyVertex>()) as GLsizeiptr,
+      buffers.vertex_buffer.vertices.as_ptr() as *const GLvoid,
+    );
+    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, buffers.ebo);
+    gl.BufferSubData(
+      gl::ELEMENT_ARRAY_BUFFER,
+      0,
+      (buffers.vertex_buffer.indices.len() * std::mem::size_of::<u16>()) as GLsizeiptr,
+      buffers.vertex_buffer.indices.as_ptr() as *const GLvoid,
+    );
+    gl.DrawElements(
+      gl::TRIANGLES,
+      buffers.vertex_buffer.indices.len() as i32,
+      gl::UNSIGNED_SHORT,
+      std::ptr::null(),
+    );
+    buffers.vertex_buffer.vertices.clear();
+    buffers.vertex_buffer.indices.clear();
+  }
+
   unsafe {
     gl.BindFramebuffer(gl::FRAMEBUFFER, frame_buffer.fbo);
     gl.Viewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
@@ -498,54 +525,9 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
       mvp_mat.to_cols_array().as_ptr(),
     );
 
-    gl.BindVertexArray(circles.vao);
-    gl.BindBuffer(gl::ARRAY_BUFFER, circles.vbo);
-    gl.BufferSubData(
-      gl::ARRAY_BUFFER,
-      0,
-      (circles.vertex_buffer.vertices.len() * std::mem::size_of::<MyVertex>()) as GLsizeiptr,
-      circles.vertex_buffer.vertices.as_ptr() as *const GLvoid,
-    );
-    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, circles.ebo);
-    gl.BufferSubData(
-      gl::ELEMENT_ARRAY_BUFFER,
-      0,
-      (circles.vertex_buffer.indices.len() * std::mem::size_of::<u16>()) as GLsizeiptr,
-      circles.vertex_buffer.indices.as_ptr() as *const GLvoid,
-    );
-    gl.DrawElements(
-      gl::TRIANGLES,
-      circles.vertex_buffer.indices.len() as i32,
-      gl::UNSIGNED_SHORT,
-      std::ptr::null(),
-    );
+    draw(gl, &mut circles);
+    draw(gl, &mut quads);
 
-    gl.BindVertexArray(quads.vao);
-    gl.BindBuffer(gl::ARRAY_BUFFER, quads.vbo);
-    gl.BufferSubData(
-      gl::ARRAY_BUFFER,
-      0,
-      (quads.vertex_buffer.vertices.len() * std::mem::size_of::<MyVertex>()) as GLsizeiptr,
-      quads.vertex_buffer.vertices.as_ptr() as *const GLvoid,
-    );
-    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, quads.ebo);
-    gl.BufferSubData(
-      gl::ELEMENT_ARRAY_BUFFER,
-      0,
-      (quads.vertex_buffer.indices.len() * std::mem::size_of::<u16>()) as GLsizeiptr,
-      quads.vertex_buffer.indices.as_ptr() as *const GLvoid,
-    );
-    gl.DrawElements(
-      gl::TRIANGLES,
-      quads.vertex_buffer.indices.len() as i32,
-      gl::UNSIGNED_SHORT,
-      std::ptr::null(),
-    );
-
-    circles.vertex_buffer.vertices.clear();
-    circles.vertex_buffer.indices.clear();
-    quads.vertex_buffer.vertices.clear();
-    quads.vertex_buffer.indices.clear();
     //----------------------SCENE----------------------//
 
     gl.BindFramebuffer(gl::FRAMEBUFFER, 0);
