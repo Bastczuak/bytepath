@@ -158,7 +158,7 @@ pub struct MyVertex {
 
 pub struct WithTransformColor {
   pub transform: glam::Mat4,
-  pub color_rgba: glam::Vec4,
+  pub color_rgba: ColorGl,
 }
 
 impl StrokeVertexConstructor<MyVertex> for WithTransformColor {

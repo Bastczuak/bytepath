@@ -5,6 +5,12 @@ pub struct ColorGl {
   pub a: f32,
 }
 
+impl ColorGl {
+  pub fn to_array(&self) -> [f32; 4] {
+    [self.r, self.g, self.g, self.a]
+  }
+}
+
 impl From<(u8, u8, u8)> for ColorGl {
   fn from((r, g, b): (u8, u8, u8)) -> ColorGl {
     ColorGl {

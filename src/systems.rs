@@ -15,16 +15,18 @@ use lyon::{
 };
 use sdl2::keyboard::Keycode;
 use std::{collections::HashSet, time::Duration};
+use crate::color::ColorGl;
+use crate::environment::RGB_COLOR_PLAYER;
 
 pub fn player_spawn_system(mut commands: Commands) {
   commands
-    .spawn()
-    .insert(Player {
-      movement_speed: 100.0,
-      rotation_speed: 360.0f32.to_radians(),
-    })
-    .insert(Transform {
-      translation: glam::Vec3::new(SCREEN_WIDTH as f32 / 2.0, SCREEN_HEIGHT as f32 / 2.0, 0.0),
+      .spawn()
+      .insert(Player {
+        movement_speed: 100.0,
+        rotation_speed: 360.0f32.to_radians(),
+      })
+      .insert(Transform {
+        translation: glam::Vec3::new(SCREEN_WIDTH as f32 / 2.0, SCREEN_HEIGHT as f32 / 2.0, 0.0),
       ..Default::default()
     })
     .insert(Interpolation::new(vec![(8.0, 0.0)], 0.24));
@@ -50,8 +52,8 @@ pub fn shooting_system(
         &mut BuffersBuilder::new(
           &mut quads.vertex_buffer,
           WithTransformColor {
-            color_rgba: glam::Vec4::new(1.0, 1.0, 1.0, 1.0),
             transform: mat4,
+            color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
           },
         ),
       )
@@ -101,7 +103,7 @@ pub fn player_system(
           &mut circles.vertex_buffer,
           WithTransformColor {
             transform: transform.mat4(),
-            color_rgba: glam::Vec4::new(1.0, 1.0, 1.0, 1.0),
+            color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
           },
         ),
       )
