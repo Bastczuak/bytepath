@@ -7,7 +7,12 @@ pub struct Player {
   pub rotation_speed: f32,
 }
 
-#[derive(Component, Debug, Default)]
+#[derive(Component, Debug)]
+pub struct Projectile {
+  pub movement_speed: f32,
+}
+
+#[derive(Component, Debug, Default, Copy, Clone)]
 pub struct Transform {
   pub rotation: glam::Quat,
   pub translation: glam::Vec3,

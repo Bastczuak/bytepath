@@ -1,6 +1,6 @@
 use crate::render::{gl::types::*, MyVertex};
 use lyon::tessellation::VertexBuffers;
-use std::marker::PhantomData;
+use std::{marker::PhantomData, time::Duration};
 
 #[derive(Debug)]
 pub struct Camera {
@@ -90,3 +90,8 @@ pub struct Rectangle {}
 
 #[derive(Debug)]
 pub struct Quad {}
+
+#[derive(Debug, Default)]
+pub struct ProjectileSpawnConfig {
+  pub timer: Duration,
+}

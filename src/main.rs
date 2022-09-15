@@ -313,8 +313,8 @@ use crate::{
   environment::{RGB_CLEAR_COLOR, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH},
   events::GameEvents,
   render::{calculate_size_for_quads, Gl},
-  resources::{Camera, Circle, CircleGeometry, Quad, Shake},
-  systems::{camera_shake_system, player_spawn_system, player_system},
+  resources::{Camera, Circle, CircleGeometry, ProjectileSpawnConfig, Quad, Shake},
+  systems::*,
 };
 use bevy_ecs::{event::Events, prelude::*, system::SystemState, world::World};
 use lyon::tessellation::{FillTessellator, StrokeTessellator};
@@ -350,6 +350,7 @@ fn main() -> Result<(), String> {
   let mut opengl_ctx = render::init(&gl)?;
 
   let mut world = World::default();
+  world.insert_resource(ProjectileSpawnConfig::default());
   world.insert_resource(HashSet::<Keycode>::default());
   world.insert_resource(Camera::default());
   world.insert_resource(Shake::default());
@@ -383,6 +384,8 @@ fn main() -> Result<(), String> {
     stage.add_system(player_system);
     stage.add_system(camera_shake_system.after(player_system));
     stage.add_system(shooting_system.after(player_system));
+    stage.add_system(projectile_spawn_system.after(player_system));
+    stage.add_system(projectile_system.after(player_system));
     stage
   });
 
