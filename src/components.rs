@@ -1,5 +1,6 @@
 use crate::easings::EasingFunction;
 use bevy_ecs::prelude::*;
+use std::time::Duration;
 
 #[derive(Component, Debug)]
 pub struct Player {
@@ -10,6 +11,11 @@ pub struct Player {
 #[derive(Component, Debug)]
 pub struct Projectile {
   pub movement_speed: f32,
+}
+
+#[derive(Component, Debug)]
+pub struct DeadProjectile {
+  pub timer: Duration,
 }
 
 #[derive(Component, Debug, Default, Copy, Clone)]

@@ -1,13 +1,14 @@
 use crate::{
   color::ColorGl,
-  components::{Interpolation, Player, Projectile, Transform},
+  components::{DeadProjectile, Interpolation, Player, Projectile, Transform},
   easings::ease_in_out_cubic,
-  environment::{RGB_COLOR_PLAYER, SCREEN_HEIGHT, SCREEN_WIDTH, Z_INDEX_PLAYER},
+  environment::*,
   render::WithTransformColor,
   resources::*,
   GameEvents,
 };
 use bevy_ecs::prelude::*;
+use glam::Vec3Swizzles;
 use lyon::{
   geom::{Box2D, Size},
   lyon_tessellation::FillOptions,
@@ -54,9 +55,9 @@ pub fn shooting_system(
             WithTransformColor {
               transform: mat4,
               color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
-          },
-        ),
-      )
+            },
+          ),
+        )
       .unwrap();
   }
 }
@@ -90,7 +91,7 @@ pub fn player_system(
     let movement_direction = transform.rotation * glam::Vec3::Y;
     let movement_distance = movement_factor * player.movement_speed * time;
     let translation_delta = movement_direction * movement_distance;
-    // transform.translation += translation_delta;
+    transform.translation += translation_delta;
 
     let mut options = StrokeOptions::default();
     options.line_width = 1.5;
@@ -145,11 +146,7 @@ pub fn camera_shake_system(
     fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
       move |n| {
         let n = n as usize;
-        if n >= samples.len() {
-          0.0
-        } else {
-          samples[n]
-        }
+        if n >= samples.len() { 0.0 } else { samples[n] }
       }
     }
     let noise_x = noise(&shake.samples_x);
@@ -186,7 +183,7 @@ pub fn projectile_spawn_system(
             ..*transform
           })
           .insert(Projectile {
-            movement_speed: player.movement_speed,
+            movement_speed: player.movement_speed * 2.0,
           });
 
       if keycodes.contains(&Keycode::Space) {
@@ -201,7 +198,7 @@ pub fn projectile_spawn_system(
               ..*transform
             })
             .insert(Projectile {
-              movement_speed: player.movement_speed,
+              movement_speed: player.movement_speed * 2.0,
             });
 
         let movement_direction = transform.rotation * glam::vec3(-1.0, 1.0, 0.0);
@@ -215,7 +212,7 @@ pub fn projectile_spawn_system(
               ..*transform
             })
             .insert(Projectile {
-              movement_speed: player.movement_speed,
+              movement_speed: player.movement_speed * 2.0,
             });
       }
     }
@@ -223,15 +220,36 @@ pub fn projectile_spawn_system(
 }
 
 pub fn projectile_system(
-  mut query: Query<(&Projectile, &mut Transform)>,
+  mut commands: Commands,
+  mut query: Query<(&Projectile, &mut Transform, Entity)>,
   mut circles: ResMut<CircleGeometry>,
   mut tessellator: ResMut<StrokeTessellator>,
   time: Res<Duration>,
 ) {
-  for (projectile, mut transform) in query.iter_mut() {
-    let time = time.as_secs_f32();
+  for (projectile, mut transform, entity) in query.iter_mut() {
+    let pos = transform.translation.xy();
+    if pos.x < 0.0 || pos.x > SCREEN_WIDTH as f32 || pos.y < 0.0 || pos.y > SCREEN_HEIGHT as f32 {
+      commands.entity(entity).despawn();
+
+      let clamped_x = pos.x.max(0.0).min(SCREEN_WIDTH as f32 - DEAD_PROJECTILE_HEIGHT);
+      let clamped_y = pos.y.max(0.0).min(SCREEN_HEIGHT as f32 - DEAD_PROJECTILE_HEIGHT);
+      let translation = glam::vec3(clamped_x, clamped_y, 1.0);
+      let rotation = if pos.x < 0.0 || pos.x > SCREEN_WIDTH as f32 {
+        glam::Quat::from_rotation_z(-std::f32::consts::PI / 2.0)
+      } else {
+        glam::Quat::from_rotation_z(0.0)
+      };
+
+      commands
+          .spawn()
+          .insert(Transform { translation, rotation })
+          .insert(DeadProjectile {
+            timer: Duration::default(),
+          });
+    }
+
     let movement_direction = transform.rotation * glam::Vec3::Y;
-    let movement_distance = projectile.movement_speed * time;
+    let movement_distance = projectile.movement_speed * time.as_secs_f32();
     let translation_delta = movement_direction * movement_distance;
     transform.translation += translation_delta;
 
@@ -249,6 +267,37 @@ pub fn projectile_system(
               color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
             },
           ),
+        )
+        .unwrap();
+  }
+}
+
+pub fn projectile_death_system(
+  mut commands: Commands,
+  mut query: Query<(&mut DeadProjectile, &Transform, Entity)>,
+  mut quads: ResMut<QuadGeometry>,
+  mut tessellator: ResMut<FillTessellator>,
+  time: Res<Duration>,
+) {
+  for (mut dead_projectile, transform, entity) in query.iter_mut() {
+    dead_projectile.timer += *time;
+
+    if dead_projectile.timer.as_secs_f32() >= 0.25 {
+      commands.entity(entity).despawn();
+      continue;
+    }
+
+    let color_rgba = if dead_projectile.timer.as_secs_f32() >= 0.1 {
+      ColorGl::from(RGB_COLOR_DEATH)
+    } else {
+      ColorGl::from(RGB_COLOR_PLAYER)
+    };
+    let transform = glam::Mat4::from_rotation_translation(transform.rotation, transform.translation);
+    tessellator
+        .tessellate_rectangle(
+          &Box2D::from_size(Size::new(DEAD_PROJECTILE_WIDTH, DEAD_PROJECTILE_HEIGHT)),
+          &FillOptions::default(),
+          &mut BuffersBuilder::new(&mut quads.vertex_buffer, WithTransformColor { transform, color_rgba }),
         )
         .unwrap();
   }

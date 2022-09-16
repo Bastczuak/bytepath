@@ -386,6 +386,8 @@ fn main() -> Result<(), String> {
     stage.add_system(shooting_system.after(player_system));
     stage.add_system(projectile_spawn_system.after(player_system));
     stage.add_system(projectile_system.after(player_system));
+    stage.add_system(projectile_death_system.after(projectile_system));
+
     stage
   });
 
