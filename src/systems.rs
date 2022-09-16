@@ -253,13 +253,11 @@ pub fn projectile_system(
     let translation_delta = movement_direction * movement_distance;
     transform.translation += translation_delta;
 
-    let mut options = StrokeOptions::default();
-    options.line_width = 1.5;
     tessellator
         .tessellate_circle(
           Point::new(0.0, 0.0),
           2.5,
-          &options,
+          &StrokeOptions::default(),
           &mut BuffersBuilder::new(
             &mut circles.vertex_buffer,
             WithTransformColor {
