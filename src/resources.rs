@@ -1,7 +1,10 @@
 use crate::render::{gl::types::*, MyVertex};
 use lyon::tessellation::VertexBuffers;
-use std::{marker::PhantomData, time::Duration};
-use std::ops::{Deref, DerefMut};
+use std::{
+  marker::PhantomData,
+  ops::{Deref, DerefMut},
+  time::Duration,
+};
 
 #[derive(Debug)]
 pub struct Camera {
@@ -120,4 +123,3 @@ impl DerefMut for Time {
     &mut self.duration
   }
 }
-
