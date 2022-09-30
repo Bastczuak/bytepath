@@ -125,7 +125,7 @@ pub fn player_explosion_spawn_system(
     match event {
       GameEvents::PlayerDeath => {
         for (_, transform) in query.iter() {
-          for _ in 0..16 {
+          for _ in 0..rng.gen_range(8usize..12usize) {
             let length = rng.gen_range(2.0..8.0);
             let width = 3.0;
             let time_to_live = rng.gen_range(0.3..0.5);
