@@ -313,7 +313,7 @@ use crate::{
   environment::{RGB_CLEAR_COLOR, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH},
   events::GameEvents,
   render::{calculate_size_for_lines, calculate_size_for_quads, Gl},
-  resources::{Camera, Circle, CircleGeometry, Line, ProjectileSpawnConfig, Quad, Shake},
+  resources::*,
   systems::*,
 };
 use bevy_ecs::{event::Events, prelude::*, system::SystemState, world::World};
@@ -351,6 +351,7 @@ fn main() -> Result<(), String> {
   let mut opengl_ctx = render::init(&gl)?;
 
   let mut world = World::default();
+  world.insert_resource(Time::default());
   world.insert_resource(rand::rngs::SmallRng::from_entropy());
   world.insert_resource(ProjectileSpawnConfig::default());
   world.insert_resource(HashSet::<Keycode>::default());
@@ -380,6 +381,8 @@ fn main() -> Result<(), String> {
   game_schedule.add_stage("events", {
     let mut stage = SystemStage::parallel();
     stage.add_system(Events::<GameEvents>::update_system);
+    stage.add_system(timing_system.after(Events::<GameEvents>::update_system));
+
     stage
   });
   game_schedule.add_stage_after("events", "game", {
@@ -396,11 +399,11 @@ fn main() -> Result<(), String> {
     stage
   });
 
-  let mut event_pump = sdl_context.event_pump()?;
+  startup_schedule.run(&mut world);
+
   let frame_dt = Duration::new(0, 1_000_000_000u32 / 60);
   let mut last_time = Instant::now();
-
-  startup_schedule.run(&mut world);
+  let mut event_pump = sdl_context.event_pump()?;
 
   'running: loop {
     let current_time = Instant::now();

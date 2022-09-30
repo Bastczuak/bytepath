@@ -1,11 +1,5 @@
 use crate::{
-  color::ColorGl,
-  components::*,
-  easings::*,
-  environment::*,
-  render::WithTransformColor,
-  resources::*,
-  GameEvents,
+  color::ColorGl, components::*, easings::*, environment::*, render::WithTransformColor, resources::*, GameEvents,
 };
 use bevy_ecs::prelude::*;
 use glam::Vec3Swizzles;
@@ -38,7 +32,7 @@ pub fn shooting_system(
   mut query: Query<(&Player, &Transform, &mut Interpolation)>,
   mut quads: ResMut<QuadGeometry>,
   mut tessellator: ResMut<FillTessellator>,
-  time: Res<Duration>,
+  time: Res<Time>,
 ) {
   for (_, transform, mut interpolation) in query.iter_mut() {
     let (values, _) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
@@ -65,14 +59,15 @@ pub fn shooting_system(
 }
 
 pub fn player_system(
-  mut query: Query<(&Player, &mut Transform)>,
+  mut commands: Commands,
+  mut query: Query<(&Player, &mut Transform, Entity)>,
   mut event_writer: EventWriter<GameEvents>,
   mut circles: ResMut<CircleGeometry>,
   mut tessellator: ResMut<StrokeTessellator>,
   keycodes: Res<HashSet<Keycode>>,
-  time: Res<Duration>,
+  time: Res<Time>,
 ) {
-  for (player, mut transform) in query.iter_mut() {
+  for (player, mut transform, entity) in query.iter_mut() {
     let mut rotation_factor = 0.0;
     let mut movement_factor = 1.0;
     let time = time.as_secs_f32();
@@ -85,6 +80,7 @@ pub fn player_system(
         Keycode::Down => movement_factor = 0.5,
         Keycode::S => {
           event_writer.send(GameEvents::PlayerDeath);
+          commands.entity(entity).despawn();
         }
         _ => {}
       }
@@ -158,10 +154,10 @@ pub fn player_explosion_system(
   mut query: Query<(&mut PlayerExplosion, &mut Transform, &mut Interpolation, Entity)>,
   mut lines: ResMut<LineGeometry>,
   mut tessellator: ResMut<StrokeTessellator>,
-  time: Res<Duration>,
+  time: Res<Time>,
 ) {
   for (mut explosion, mut transform, mut interpolation, entity) in query.iter_mut() {
-    explosion.timer += *time;
+    explosion.timer += **time;
     if explosion.timer.as_secs_f32() >= explosion.time_to_live {
       commands.entity(entity).despawn();
       continue;
@@ -203,7 +199,7 @@ pub fn camera_shake_system(
   mut event_reader: EventReader<GameEvents>,
   mut camera: ResMut<Camera>,
   mut shake: ResMut<Shake>,
-  time: Res<Duration>,
+  raw_time: Res<Duration>, // don't use Res<Time> here because I don't want to apply slow motion to camera shake
 ) {
   let Shake { is_shaking, .. } = *shake;
 
@@ -214,7 +210,7 @@ pub fn camera_shake_system(
   }
 
   if is_shaking {
-    shake.time += time.as_secs_f32();
+    shake.time += raw_time.as_secs_f32();
     if shake.time > shake.duration {
       shake.time = 0.0;
       shake.is_shaking = false;
@@ -233,7 +229,11 @@ pub fn camera_shake_system(
     fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
       move |n| {
         let n = n as usize;
-        if n >= samples.len() { 0.0 } else { samples[n] }
+        if n >= samples.len() {
+          0.0
+        } else {
+          samples[n]
+        }
       }
     }
     let noise_x = noise(&shake.samples_x);
@@ -249,12 +249,12 @@ pub fn camera_shake_system(
 pub fn projectile_spawn_system(
   query: Query<(&Player, &Transform)>,
   mut commands: Commands,
-  time: Res<Duration>,
+  time: Res<Time>,
   mut config: ResMut<ProjectileSpawnConfig>,
   keycodes: Res<HashSet<Keycode>>,
 ) {
   for (player, transform) in query.iter() {
-    config.timer += *time;
+    config.timer += **time;
 
     if config.timer.as_secs_f32() >= 0.25 {
       config.timer = Duration::default();
@@ -311,7 +311,7 @@ pub fn projectile_system(
   mut query: Query<(&Projectile, &mut Transform, Entity)>,
   mut circles: ResMut<CircleGeometry>,
   mut tessellator: ResMut<StrokeTessellator>,
-  time: Res<Duration>,
+  time: Res<Time>,
 ) {
   for (projectile, mut transform, entity) in query.iter_mut() {
     let pos = transform.translation.xy();
@@ -362,10 +362,10 @@ pub fn projectile_death_system(
   mut query: Query<(&mut DeadProjectile, &Transform, Entity)>,
   mut quads: ResMut<QuadGeometry>,
   mut tessellator: ResMut<FillTessellator>,
-  time: Res<Duration>,
+  time: Res<Time>,
 ) {
   for (mut dead_projectile, transform, entity) in query.iter_mut() {
-    dead_projectile.timer += *time;
+    dead_projectile.timer += **time;
 
     if dead_projectile.timer.as_secs_f32() >= 0.25 {
       commands.entity(entity).despawn();
@@ -385,5 +385,29 @@ pub fn projectile_death_system(
         &mut BuffersBuilder::new(&mut quads.vertex_buffer, WithTransformColor { transform, color_rgba }),
       )
       .unwrap();
+  }
+}
+
+pub fn timing_system(
+  mut event_reader: EventReader<GameEvents>,
+  raw_time: Res<Duration>, // this is set in main() with *world.resource_mut() = dt;
+  mut time: ResMut<Time>,
+) {
+  for event in event_reader.iter() {
+    match event {
+      GameEvents::PlayerDeath => time.slow_down_timer = Some(Duration::default()),
+    }
+  }
+
+  if let Some(mut timer) = time.slow_down_timer.take() {
+    timer += *raw_time;
+    if timer.as_secs_f32() <= SLOW_DOWN_DURATION_ON_DEATH {
+      let easing = ease_in_out_cubic(timer.as_secs_f32() / SLOW_DOWN_DURATION_ON_DEATH);
+      let slow_amount = (1.0 - easing) * 0.15 + easing * 1.0;
+      **time = Duration::from_secs_f32(raw_time.as_secs_f32() * slow_amount);
+      time.slow_down_timer.replace(timer);
+    }
+  } else {
+    **time = *raw_time;
   }
 }
