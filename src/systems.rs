@@ -1,7 +1,7 @@
 use crate::{
   color::ColorGl,
-  components::{DeadProjectile, Interpolation, Player, Projectile, Transform},
-  easings::ease_in_out_cubic,
+  components::*,
+  easings::*,
   environment::*,
   render::WithTransformColor,
   resources::*,
@@ -12,23 +12,25 @@ use glam::Vec3Swizzles;
 use lyon::{
   geom::{Box2D, Size},
   lyon_tessellation::FillOptions,
-  math::Point,
+  math::{point, Point},
+  path::Path,
   tessellation::{BuffersBuilder, FillTessellator, StrokeOptions, StrokeTessellator},
 };
+use rand::Rng;
 use sdl2::keyboard::Keycode;
 use std::{collections::HashSet, time::Duration};
 
 pub fn player_spawn_system(mut commands: Commands) {
   commands
-      .spawn()
-      .insert(Player {
-        movement_speed: 100.0,
-        rotation_speed: 360.0f32.to_radians(),
-      })
-      .insert(Transform {
-        translation: glam::Vec3::new(SCREEN_WIDTH as f32 / 2.0, SCREEN_HEIGHT as f32 / 2.0, Z_INDEX_PLAYER),
-        ..Default::default()
-      })
+    .spawn()
+    .insert(Player {
+      movement_speed: 100.0,
+      rotation_speed: 360.0f32.to_radians(),
+    })
+    .insert(Transform {
+      translation: glam::Vec3::new(SCREEN_WIDTH as f32 / 2.0, SCREEN_HEIGHT as f32 / 2.0, Z_INDEX_PLAYER),
+      ..Default::default()
+    })
     .insert(Interpolation::new(vec![(8.0, 0.0)], 0.24));
 }
 
@@ -41,23 +43,23 @@ pub fn shooting_system(
   for (_, transform, mut interpolation) in query.iter_mut() {
     let (values, _) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
     let mat4 =
-        glam::Mat4::from_rotation_translation(
-          transform.rotation * glam::Quat::from_rotation_z(45.0f32.to_radians()),
-          transform.translation,
-        ) * glam::Mat4::from_translation(glam::vec3(8.0 - values[0] / 2.0, 8.0 - values[0] / 2.0, Z_INDEX_PLAYER));
+      glam::Mat4::from_rotation_translation(
+        transform.rotation * glam::Quat::from_rotation_z(45.0f32.to_radians()),
+        transform.translation,
+      ) * glam::Mat4::from_translation(glam::vec3(8.0 - values[0] / 2.0, 8.0 - values[0] / 2.0, Z_INDEX_PLAYER));
 
     tessellator
-        .tessellate_rectangle(
-          &Box2D::from_size(Size::new(values[0], values[0])),
-          &FillOptions::default(),
-          &mut BuffersBuilder::new(
-            &mut quads.vertex_buffer,
-            WithTransformColor {
-              transform: mat4,
-              color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
-            },
-          ),
-        )
+      .tessellate_rectangle(
+        &Box2D::from_size(Size::new(values[0], values[0])),
+        &FillOptions::default(),
+        &mut BuffersBuilder::new(
+          &mut quads.vertex_buffer,
+          WithTransformColor {
+            transform: mat4,
+            color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
+          },
+        ),
+      )
       .unwrap();
   }
 }
@@ -80,6 +82,7 @@ pub fn player_system(
         Keycode::Up => movement_factor = 1.5,
         Keycode::Left => rotation_factor += 1.0,
         Keycode::Right => rotation_factor -= 1.0,
+        Keycode::Down => movement_factor = 0.5,
         Keycode::S => {
           event_writer.send(GameEvents::PlayerDeath);
         }
@@ -102,6 +105,90 @@ pub fn player_system(
         &options,
         &mut BuffersBuilder::new(
           &mut circles.vertex_buffer,
+          WithTransformColor {
+            transform: transform.mat4(),
+            color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
+          },
+        ),
+      )
+      .unwrap();
+  }
+}
+
+pub fn player_explosion_spawn_system(
+  mut commands: Commands,
+  mut event_reader: EventReader<GameEvents>,
+  query: Query<(&Player, &Transform)>,
+  mut rng: ResMut<rand::rngs::SmallRng>,
+) {
+  for event in event_reader.iter() {
+    match event {
+      GameEvents::PlayerDeath => {
+        for (_, transform) in query.iter() {
+          for _ in 0..16 {
+            let length = rng.gen_range(2.0..8.0);
+            let width = 3.0;
+            let time_to_live = rng.gen_range(0.3..0.5);
+            let movement_speed = rng.gen_range(75.0..150.0);
+            let z_angle = rng.gen_range(0.0..2.0 * std::f32::consts::PI);
+
+            commands
+              .spawn()
+              .insert(Transform {
+                rotation: glam::Quat::from_rotation_z(z_angle),
+                ..*transform
+              })
+              .insert(PlayerExplosion {
+                timer: Duration::default(),
+                time_to_live,
+              })
+              .insert(Interpolation::new(
+                vec![(movement_speed, 0.0), (length, 0.0), (width, 0.0)],
+                time_to_live,
+              ));
+          }
+        }
+      }
+    }
+  }
+}
+
+pub fn player_explosion_system(
+  mut commands: Commands,
+  mut query: Query<(&mut PlayerExplosion, &mut Transform, &mut Interpolation, Entity)>,
+  mut lines: ResMut<LineGeometry>,
+  mut tessellator: ResMut<StrokeTessellator>,
+  time: Res<Duration>,
+) {
+  for (mut explosion, mut transform, mut interpolation, entity) in query.iter_mut() {
+    explosion.timer += *time;
+    if explosion.timer.as_secs_f32() >= explosion.time_to_live {
+      commands.entity(entity).despawn();
+      continue;
+    }
+
+    let (values, _) = interpolation.eval(time.as_secs_f32(), linear);
+    let movement_speed = values[0];
+    let length = values[1];
+    let width = values[2];
+    let movement_direction = transform.rotation * glam::Vec3::Y;
+    let movement_distance = movement_speed * time.as_secs_f32();
+    let translation_delta = movement_direction * movement_distance;
+    transform.translation += translation_delta;
+
+    let mut builder = Path::builder();
+    builder.begin(point(0.0, 0.0));
+    builder.line_to(point(0.0, length));
+    builder.close();
+
+    let mut options = StrokeOptions::default();
+    options.line_width = width;
+    tessellator
+      .tessellate_path(
+        &builder.build(),
+        &options,
+        &mut BuffersBuilder::new(
+          &mut lines.vertex_buffer,
           WithTransformColor {
             transform: transform.mat4(),
             color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
@@ -177,6 +264,21 @@ pub fn projectile_spawn_system(
       let translation = transform.translation + translation_delta;
 
       commands
+        .spawn()
+        .insert(Transform {
+          translation,
+          ..*transform
+        })
+        .insert(Projectile {
+          movement_speed: player.movement_speed * 2.0,
+        });
+
+      if keycodes.contains(&Keycode::Space) {
+        let movement_direction = transform.rotation * glam::vec3(1.0, 1.0, 0.0);
+        let translation_delta = movement_direction * 12.0;
+        let translation = transform.translation + translation_delta;
+
+        commands
           .spawn()
           .insert(Transform {
             translation,
@@ -186,34 +288,19 @@ pub fn projectile_spawn_system(
             movement_speed: player.movement_speed * 2.0,
           });
 
-      if keycodes.contains(&Keycode::Space) {
-        let movement_direction = transform.rotation * glam::vec3(1.0, 1.0, 0.0);
-        let translation_delta = movement_direction * 12.0;
-        let translation = transform.translation + translation_delta;
-
-        commands
-            .spawn()
-            .insert(Transform {
-              translation,
-              ..*transform
-            })
-            .insert(Projectile {
-              movement_speed: player.movement_speed * 2.0,
-            });
-
         let movement_direction = transform.rotation * glam::vec3(-1.0, 1.0, 0.0);
         let translation_delta = movement_direction * 12.0;
         let translation = transform.translation + translation_delta;
 
         commands
-            .spawn()
-            .insert(Transform {
-              translation,
-              ..*transform
-            })
-            .insert(Projectile {
-              movement_speed: player.movement_speed * 2.0,
-            });
+          .spawn()
+          .insert(Transform {
+            translation,
+            ..*transform
+          })
+          .insert(Projectile {
+            movement_speed: player.movement_speed * 2.0,
+          });
       }
     }
   }
@@ -241,11 +328,11 @@ pub fn projectile_system(
       };
 
       commands
-          .spawn()
-          .insert(Transform { translation, rotation })
-          .insert(DeadProjectile {
-            timer: Duration::default(),
-          });
+        .spawn()
+        .insert(Transform { translation, rotation })
+        .insert(DeadProjectile {
+          timer: Duration::default(),
+        });
     }
 
     let movement_direction = transform.rotation * glam::Vec3::Y;
@@ -254,19 +341,19 @@ pub fn projectile_system(
     transform.translation += translation_delta;
 
     tessellator
-        .tessellate_circle(
-          Point::new(0.0, 0.0),
-          2.5,
-          &StrokeOptions::default(),
-          &mut BuffersBuilder::new(
-            &mut circles.vertex_buffer,
-            WithTransformColor {
-              transform: transform.mat4(),
-              color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
-            },
-          ),
-        )
-        .unwrap();
+      .tessellate_circle(
+        Point::new(0.0, 0.0),
+        2.5,
+        &StrokeOptions::default(),
+        &mut BuffersBuilder::new(
+          &mut circles.vertex_buffer,
+          WithTransformColor {
+            transform: transform.mat4(),
+            color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
+          },
+        ),
+      )
+      .unwrap();
   }
 }
 
@@ -292,11 +379,11 @@ pub fn projectile_death_system(
     };
     let transform = glam::Mat4::from_rotation_translation(transform.rotation, transform.translation);
     tessellator
-        .tessellate_rectangle(
-          &Box2D::from_size(Size::new(DEAD_PROJECTILE_WIDTH, DEAD_PROJECTILE_HEIGHT)),
-          &FillOptions::default(),
-          &mut BuffersBuilder::new(&mut quads.vertex_buffer, WithTransformColor { transform, color_rgba }),
-        )
-        .unwrap();
+      .tessellate_rectangle(
+        &Box2D::from_size(Size::new(DEAD_PROJECTILE_WIDTH, DEAD_PROJECTILE_HEIGHT)),
+        &FillOptions::default(),
+        &mut BuffersBuilder::new(&mut quads.vertex_buffer, WithTransformColor { transform, color_rgba }),
+      )
+      .unwrap();
   }
 }

@@ -7,13 +7,14 @@ use crate::{
   color::ColorGl,
   environment::{SCREEN_HEIGHT, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH, SCREEN_WIDTH},
   render::gl::types::*,
-  resources::{DrawBuffers, QuadGeometry},
+  resources::{DrawBuffers, LineGeometry, QuadGeometry},
   Camera, CircleGeometry, RGB_CLEAR_COLOR,
 };
 use bevy_ecs::system::{Res, ResMut};
 use lyon::{
   lyon_tessellation::{FillOptions, FillTessellator, FillVertex, FillVertexConstructor},
-  math::Point,
+  math::{point, Point},
+  path::Path,
   tessellation::{
     geometry_builder::simple_builder, StrokeOptions, StrokeTessellator, StrokeVertex, StrokeVertexConstructor,
     VertexBuffers,
@@ -114,7 +115,7 @@ pub struct Gl {
 impl Gl {
   pub fn load_with<F>(load_fn: F) -> Self
     where
-        F: FnMut(&'static str) -> *const GLvoid,
+      F: FnMut(&'static str) -> *const GLvoid,
   {
     Self {
       inner: std::rc::Rc::new(gl::Gl::load_with(load_fn)),
@@ -243,6 +244,22 @@ pub fn create_shader_program(gl: &gl::Gl, vertex_src: &str, fragment_src: &str) 
   let vertex_shader = compile_shader(gl, vertex_src, gl::VERTEX_SHADER)?;
   let fragment_shader = compile_shader(gl, fragment_src, gl::FRAGMENT_SHADER)?;
   link_program(gl, vertex_shader, fragment_shader)
+}
+
+pub fn calculate_size_for_lines() -> VertexBuffers<Point, u16> {
+  let mut geometry: VertexBuffers<Point, u16> = VertexBuffers::new();
+  let mut vertex_builder = simple_builder(&mut geometry);
+  let mut tessellator = StrokeTessellator::new();
+  let mut builder = Path::builder();
+  builder.begin(point(0.0, 0.0));
+  builder.line_to(point(0.0, 1.0));
+  builder.close();
+
+  tessellator
+    .tessellate_path(&builder.build(), &StrokeOptions::default(), &mut vertex_builder)
+    .unwrap();
+
+  geometry
 }
 
 pub fn calculate_size_for_circles() -> VertexBuffers<Point, u16> {
@@ -457,10 +474,15 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
   })
 }
 
-pub type RenderSystemState<'w, 's> = (Res<'w, Camera>, ResMut<'w, CircleGeometry>, ResMut<'w, QuadGeometry>);
+pub type RenderSystemState<'w, 's> = (
+  Res<'w, Camera>,
+  ResMut<'w, CircleGeometry>,
+  ResMut<'w, QuadGeometry>,
+  ResMut<'w, LineGeometry>,
+);
 
 pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemState) -> Result<(), String> {
-  let (camera, mut circles, mut quads) = render_state;
+  let (camera, mut circles, mut quads, mut lines) = render_state;
   let OpenglCtx {
     clear_color,
     frame_buffer,
@@ -527,6 +549,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
 
     draw(gl, &mut circles);
     draw(gl, &mut quads);
+    draw(gl, &mut lines);
 
     //----------------------SCENE----------------------//
 
@@ -543,17 +566,20 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
 }
 
 pub fn delete(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemState) {
-  let (_, circles, quads) = render_state;
+  let (_, circles, quads, lines) = render_state;
   unsafe {
     gl.DeleteVertexArrays(1, &opengl_ctx.frame_buffer.vao);
     gl.DeleteVertexArrays(1, &circles.vao);
     gl.DeleteVertexArrays(1, &quads.vao);
+    gl.DeleteVertexArrays(1, &lines.vao);
     gl.DeleteBuffers(1, &opengl_ctx.frame_buffer.vbo);
     gl.DeleteBuffers(1, &opengl_ctx.frame_buffer.texture2d);
     gl.DeleteBuffers(1, &circles.vbo);
     gl.DeleteBuffers(1, &quads.vbo);
+    gl.DeleteBuffers(1, &lines.vbo);
     gl.DeleteBuffers(1, &circles.ebo);
     gl.DeleteBuffers(1, &quads.ebo);
+    gl.DeleteBuffers(1, &lines.ebo);
     gl.DeleteProgram(opengl_ctx.frame_buffer.shader_program);
     gl.DeleteProgram(opengl_ctx.scene_program);
     gl.DeleteFramebuffers(1, &opengl_ctx.frame_buffer.fbo);

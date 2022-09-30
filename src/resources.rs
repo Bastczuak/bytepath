@@ -60,6 +60,7 @@ impl Default for Shake {
 
 pub type CircleGeometry = DrawBuffers<Circle>;
 pub type QuadGeometry = DrawBuffers<Quad>;
+pub type LineGeometry = DrawBuffers<Line>;
 
 #[derive(Debug)]
 pub struct DrawBuffers<Geometry> {
@@ -90,6 +91,9 @@ pub struct Rectangle {}
 
 #[derive(Debug)]
 pub struct Quad {}
+
+#[derive(Debug)]
+pub struct Line {}
 
 #[derive(Debug, Default)]
 pub struct ProjectileSpawnConfig {

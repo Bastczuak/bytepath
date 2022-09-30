@@ -18,6 +18,12 @@ pub struct DeadProjectile {
   pub timer: Duration,
 }
 
+#[derive(Component, Debug)]
+pub struct PlayerExplosion {
+  pub timer: Duration,
+  pub time_to_live: f32,
+}
+
 #[derive(Component, Debug, Default, Copy, Clone)]
 pub struct Transform {
   pub rotation: glam::Quat,
