@@ -229,11 +229,7 @@ pub fn camera_shake_system(
     fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
       move |n| {
         let n = n as usize;
-        if n >= samples.len() {
-          0.0
-        } else {
-          samples[n]
-        }
+        if n >= samples.len() { 0.0 } else { samples[n] }
       }
     }
     let noise_x = noise(&shake.samples_x);
@@ -409,5 +405,64 @@ pub fn timing_system(
     }
   } else {
     **time = *raw_time;
+  }
+}
+
+pub fn tick_effect_spawn_system(
+  query: Query<&Player>,
+  mut commands: Commands,
+  time: Res<Time>,
+  mut config: ResMut<TickEffectSpawnConfig>,
+) {
+  for _ in query.iter() {
+    config.timer += **time;
+
+    if config.timer.as_secs_f32() >= 5.0 {
+      config.timer = Duration::default();
+
+      commands
+        .spawn()
+        .insert(TickEffect {
+          timer: Duration::default(),
+        })
+        .insert(Interpolation::new(vec![(32.0, 0.0)], 0.13));
+    }
+  }
+}
+
+pub fn tick_effect_system(
+  mut commands: Commands,
+  player_query: Query<(&Player, &Transform)>,
+  mut tick_effect_query: Query<(&mut TickEffect, &mut Interpolation, Entity)>,
+  mut quads: ResMut<QuadGeometry>,
+  mut tessellator: ResMut<FillTessellator>,
+  time: Res<Time>,
+) {
+  for (_, transform) in player_query.iter() {
+    for (mut tick_effect, mut interpolation, entity) in tick_effect_query.iter_mut() {
+      tick_effect.timer += **time;
+
+      if tick_effect.timer.as_secs_f32() <= 0.13 {
+        let (values, _) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
+        let mat4 = glam::Mat4::from_translation(transform.translation)
+          * glam::Mat4::from_translation(glam::vec3(48.0 / -2.0, 32.0 / 2.0 - values[0], Z_INDEX_PLAYER));
+
+        tessellator
+          .tessellate_rectangle(
+            &Box2D::from_size(Size::new(48.0, values[0])),
+            &FillOptions::default(),
+            &mut BuffersBuilder::new(
+              &mut quads.vertex_buffer,
+              WithTransformColor {
+                transform: mat4,
+                color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
+              },
+            ),
+          )
+          .unwrap();
+      } else {
+        commands.entity(entity).despawn();
+      }
+    }
   }
 }

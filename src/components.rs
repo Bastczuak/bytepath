@@ -24,6 +24,11 @@ pub struct PlayerExplosion {
   pub time_to_live: f32,
 }
 
+#[derive(Component, Debug, Default)]
+pub struct TickEffect {
+  pub timer: Duration,
+}
+
 #[derive(Component, Debug, Default, Copy, Clone)]
 pub struct Transform {
   pub rotation: glam::Quat,

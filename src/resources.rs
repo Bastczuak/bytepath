@@ -105,6 +105,11 @@ pub struct ProjectileSpawnConfig {
 }
 
 #[derive(Debug, Default)]
+pub struct TickEffectSpawnConfig {
+  pub timer: Duration,
+}
+
+#[derive(Debug, Default)]
 pub struct Time {
   pub duration: Duration,
   pub slow_down_timer: Option<Duration>,
