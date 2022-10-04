@@ -38,6 +38,21 @@ pub struct Shake {
   pub samples_y: Vec<f32>,
 }
 
+#[derive(Debug)]
+pub struct Flash {
+  pub frame_cnt: u8,
+  pub is_flashing: bool,
+}
+
+impl Default for Flash {
+  fn default() -> Self {
+    Self {
+      frame_cnt: 4,
+      is_flashing: false,
+    }
+  }
+}
+
 impl Default for Shake {
   fn default() -> Self {
     use rand::{Rng, SeedableRng};
@@ -100,13 +115,10 @@ pub struct Quad {}
 pub struct Line {}
 
 #[derive(Debug, Default)]
-pub struct ProjectileSpawnConfig {
-  pub timer: Duration,
-}
-
-#[derive(Debug, Default)]
-pub struct TickEffectSpawnConfig {
-  pub timer: Duration,
+pub struct EntitySpawnTimer {
+  pub projectile: Duration,
+  pub tick_effect: Duration,
+  pub boost_effect: Duration,
 }
 
 #[derive(Debug, Default)]

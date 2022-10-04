@@ -229,7 +229,11 @@ pub fn camera_shake_system(
     fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
       move |n| {
         let n = n as usize;
-        if n >= samples.len() { 0.0 } else { samples[n] }
+        if n >= samples.len() {
+          0.0
+        } else {
+          samples[n]
+        }
       }
     }
     let noise_x = noise(&shake.samples_x);
@@ -242,18 +246,53 @@ pub fn camera_shake_system(
   }
 }
 
+pub fn screen_flash_system(
+  mut event_reader: EventReader<GameEvents>,
+  mut flash: ResMut<Flash>,
+  mut quads: ResMut<QuadGeometry>,
+  mut tessellator: ResMut<FillTessellator>,
+) {
+  for event in event_reader.iter() {
+    match event {
+      GameEvents::PlayerDeath => flash.is_flashing = true,
+    }
+  }
+
+  if flash.is_flashing {
+    flash.frame_cnt -= 1;
+
+    if flash.frame_cnt > 0 {
+      tessellator
+        .tessellate_rectangle(
+          &Box2D::from_size(Size::new(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32)),
+          &FillOptions::default(),
+          &mut BuffersBuilder::new(
+            &mut quads.vertex_buffer,
+            WithTransformColor {
+              transform: glam::Mat4::from_translation(glam::vec3(0.0, 0.0, 100.0)),
+              color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
+            },
+          ),
+        )
+        .unwrap();
+    } else {
+      *flash = Flash::default();
+    }
+  }
+}
+
 pub fn projectile_spawn_system(
   query: Query<(&Player, &Transform)>,
   mut commands: Commands,
   time: Res<Time>,
-  mut config: ResMut<ProjectileSpawnConfig>,
+  mut timer: ResMut<EntitySpawnTimer>,
   keycodes: Res<HashSet<Keycode>>,
 ) {
   for (player, transform) in query.iter() {
-    config.timer += **time;
+    timer.projectile += **time;
 
-    if config.timer.as_secs_f32() >= 0.25 {
-      config.timer = Duration::default();
+    if timer.projectile.as_secs_f32() >= 0.25 {
+      timer.projectile = Duration::default();
 
       let movement_direction = transform.rotation * glam::Vec3::Y;
       let translation_delta = movement_direction * 12.0;
@@ -412,13 +451,13 @@ pub fn tick_effect_spawn_system(
   query: Query<&Player>,
   mut commands: Commands,
   time: Res<Time>,
-  mut config: ResMut<TickEffectSpawnConfig>,
+  mut timer: ResMut<EntitySpawnTimer>,
 ) {
   for _ in query.iter() {
-    config.timer += **time;
+    timer.tick_effect += **time;
 
-    if config.timer.as_secs_f32() >= 5.0 {
-      config.timer = Duration::default();
+    if timer.tick_effect.as_secs_f32() >= 5.0 {
+      timer.tick_effect = Duration::default();
 
       commands
         .spawn()

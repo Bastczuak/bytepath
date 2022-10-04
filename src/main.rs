@@ -51,11 +51,11 @@ fn main() -> Result<(), String> {
   let mut world = World::default();
   world.insert_resource(Time::default());
   world.insert_resource(rand::rngs::SmallRng::from_entropy());
-  world.insert_resource(TickEffectSpawnConfig::default());
-  world.insert_resource(ProjectileSpawnConfig::default());
+  world.insert_resource(EntitySpawnTimer::default());
   world.insert_resource(HashSet::<Keycode>::default());
   world.insert_resource(Camera::default());
   world.insert_resource(Shake::default());
+  world.insert_resource(Flash::default());
   world.insert_resource(Duration::default());
   world.insert_resource(Events::<GameEvents>::default());
   world.insert_resource(StrokeTessellator::new());
@@ -87,7 +87,6 @@ fn main() -> Result<(), String> {
   game_schedule.add_stage_after("events", "game", {
     let mut stage = SystemStage::parallel();
     stage.add_system(player_system);
-    stage.add_system(camera_shake_system.after(player_system));
     stage.add_system(shooting_system.after(player_system));
     stage.add_system(tick_effect_spawn_system.after(player_system));
     stage.add_system(tick_effect_system.after(player_system));
@@ -96,6 +95,8 @@ fn main() -> Result<(), String> {
     stage.add_system(projectile_death_system.after(projectile_system));
     stage.add_system(player_explosion_spawn_system.after(player_system));
     stage.add_system(player_explosion_system.after(player_explosion_spawn_system));
+    stage.add_system(camera_shake_system);
+    stage.add_system(screen_flash_system);
 
     stage
   });
