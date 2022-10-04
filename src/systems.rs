@@ -111,6 +111,71 @@ pub fn player_system(
   }
 }
 
+pub fn trail_effect_spawn_system(
+  mut commands: Commands,
+  query: Query<(&Player, &Transform)>,
+  mut rng: ResMut<rand::rngs::SmallRng>,
+) {
+  for (_, transform) in query.iter() {
+    let radius = rng.gen_range(4.0..6.0);
+    let movement_direction = transform.rotation * glam::Vec3::Y;
+    let translation_delta = movement_direction * (12.0 + 2.0);
+    let translation = transform.translation - translation_delta + glam::vec3(0.0, 0.0, Z_INDEX_PLAYER + 1.0);
+    let time_to_live = rng.gen_range(0.15..0.25);
+
+    commands
+      .spawn()
+      .insert(TrailEffect)
+      .insert(Interpolation::new(vec![(radius, 0.0)], time_to_live))
+      .insert(Transform {
+        translation,
+        ..*transform
+      });
+  }
+}
+
+pub fn trail_effect_system(
+  mut commands: Commands,
+  mut query: Query<(&TrailEffect, &mut Interpolation, &Transform, Entity)>,
+  mut circles: ResMut<CircleGeometry>,
+  mut tessellator: ResMut<FillTessellator>,
+  keycodes: Res<HashSet<Keycode>>,
+  time: Res<Time>,
+) {
+  for (_, mut interpolation, transform, entity) in query.iter_mut() {
+    let (values, done) = interpolation.eval(time.as_secs_f32(), linear);
+    if done {
+      commands.entity(entity).despawn();
+      continue;
+    }
+
+    let mut color_rgba = ColorGl::from(RGB_COLOR_TRAIL);
+
+    for keycode in keycodes.iter() {
+      match keycode {
+        Keycode::Up => color_rgba = ColorGl::from(RGB_COLOR_BOOST),
+        Keycode::Down => color_rgba = ColorGl::from(RGB_COLOR_BOOST),
+        _ => {}
+      }
+    }
+
+    tessellator
+      .tessellate_circle(
+        Point::new(0.0, 0.0),
+        values[0],
+        &FillOptions::default(),
+        &mut BuffersBuilder::new(
+          &mut circles.vertex_buffer,
+          WithTransformColor {
+            transform: transform.mat4(),
+            color_rgba,
+          },
+        ),
+      )
+      .unwrap();
+  }
+}
+
 pub fn player_explosion_spawn_system(
   mut commands: Commands,
   mut event_reader: EventReader<GameEvents>,
@@ -134,10 +199,7 @@ pub fn player_explosion_spawn_system(
                 rotation: glam::Quat::from_rotation_z(z_angle),
                 ..*transform
               })
-              .insert(PlayerExplosion {
-                timer: Duration::default(),
-                time_to_live,
-              })
+              .insert(PlayerExplosion)
               .insert(Interpolation::new(
                 vec![(movement_speed, 0.0), (length, 0.0), (width, 0.0)],
                 time_to_live,
@@ -151,19 +213,18 @@ pub fn player_explosion_spawn_system(
 
 pub fn player_explosion_system(
   mut commands: Commands,
-  mut query: Query<(&mut PlayerExplosion, &mut Transform, &mut Interpolation, Entity)>,
+  mut query: Query<(&PlayerExplosion, &mut Transform, &mut Interpolation, Entity)>,
   mut lines: ResMut<LineGeometry>,
   mut tessellator: ResMut<StrokeTessellator>,
   time: Res<Time>,
 ) {
-  for (mut explosion, mut transform, mut interpolation, entity) in query.iter_mut() {
-    explosion.timer += **time;
-    if explosion.timer.as_secs_f32() >= explosion.time_to_live {
+  for (_, mut transform, mut interpolation, entity) in query.iter_mut() {
+    let (values, done) = interpolation.eval(time.as_secs_f32(), linear);
+    if done {
       commands.entity(entity).despawn();
       continue;
     }
 
-    let (values, _) = interpolation.eval(time.as_secs_f32(), linear);
     let movement_speed = values[0];
     let length = values[1];
     let width = values[2];
@@ -229,11 +290,7 @@ pub fn camera_shake_system(
     fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
       move |n| {
         let n = n as usize;
-        if n >= samples.len() {
-          0.0
-        } else {
-          samples[n]
-        }
+        if n >= samples.len() { 0.0 } else { samples[n] }
       }
     }
     let noise_x = noise(&shake.samples_x);
@@ -461,9 +518,7 @@ pub fn tick_effect_spawn_system(
 
       commands
         .spawn()
-        .insert(TickEffect {
-          timer: Duration::default(),
-        })
+        .insert(TickEffect)
         .insert(Interpolation::new(vec![(32.0, 0.0)], 0.13));
     }
   }
@@ -472,36 +527,34 @@ pub fn tick_effect_spawn_system(
 pub fn tick_effect_system(
   mut commands: Commands,
   player_query: Query<(&Player, &Transform)>,
-  mut tick_effect_query: Query<(&mut TickEffect, &mut Interpolation, Entity)>,
+  mut tick_effect_query: Query<(&TickEffect, &mut Interpolation, Entity)>,
   mut quads: ResMut<QuadGeometry>,
   mut tessellator: ResMut<FillTessellator>,
   time: Res<Time>,
 ) {
   for (_, transform) in player_query.iter() {
-    for (mut tick_effect, mut interpolation, entity) in tick_effect_query.iter_mut() {
-      tick_effect.timer += **time;
-
-      if tick_effect.timer.as_secs_f32() <= 0.13 {
-        let (values, _) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
-        let mat4 = glam::Mat4::from_translation(transform.translation)
-          * glam::Mat4::from_translation(glam::vec3(48.0 / -2.0, 32.0 / 2.0 - values[0], Z_INDEX_PLAYER));
-
-        tessellator
-          .tessellate_rectangle(
-            &Box2D::from_size(Size::new(48.0, values[0])),
-            &FillOptions::default(),
-            &mut BuffersBuilder::new(
-              &mut quads.vertex_buffer,
-              WithTransformColor {
-                transform: mat4,
-                color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
-              },
-            ),
-          )
-          .unwrap();
-      } else {
+    for (_, mut interpolation, entity) in tick_effect_query.iter_mut() {
+      let (values, done) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
+      if done {
         commands.entity(entity).despawn();
+        continue;
       }
+
+      let mat4 = glam::Mat4::from_translation(transform.translation)
+        * glam::Mat4::from_translation(glam::vec3(48.0 / -2.0, 32.0 / 2.0 - values[0], Z_INDEX_PLAYER));
+      tessellator
+        .tessellate_rectangle(
+          &Box2D::from_size(Size::new(48.0, values[0])),
+          &FillOptions::default(),
+          &mut BuffersBuilder::new(
+            &mut quads.vertex_buffer,
+            WithTransformColor {
+              transform: mat4,
+              color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
+            },
+          ),
+        )
+        .unwrap();
     }
   }
 }

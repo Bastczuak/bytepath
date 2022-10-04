@@ -18,16 +18,14 @@ pub struct DeadProjectile {
   pub timer: Duration,
 }
 
-#[derive(Component, Debug)]
-pub struct PlayerExplosion {
-  pub timer: Duration,
-  pub time_to_live: f32,
-}
+#[derive(Component)]
+pub struct PlayerExplosion;
 
-#[derive(Component, Debug, Default)]
-pub struct TickEffect {
-  pub timer: Duration,
-}
+#[derive(Component)]
+pub struct TickEffect;
+
+#[derive(Component)]
+pub struct TrailEffect;
 
 #[derive(Component, Debug, Default, Copy, Clone)]
 pub struct Transform {

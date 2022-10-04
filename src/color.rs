@@ -7,7 +7,7 @@ pub struct ColorGl {
 
 impl ColorGl {
   pub fn to_array(&self) -> [f32; 4] {
-    [self.r, self.g, self.g, self.a]
+    [self.r, self.g, self.b, self.a]
   }
 }
 
