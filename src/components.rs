@@ -75,3 +75,41 @@ impl Interpolation {
     )
   }
 }
+
+
+#[derive(Component, Debug)]
+pub struct Boost {
+  pub max_boost: f32,
+  pub boost: f32,
+  pub cooldown: Option<f32>,
+  pub inc_amount: f32,
+  pub dec_amount: f32,
+  pub cooldown_sec: Option<f32>,
+}
+
+impl Boost {
+  pub fn is_empty(&self) -> bool {
+    self.boost < 0.0
+  }
+
+  pub fn no_cooldown(&self) -> bool {
+    self.cooldown.is_none()
+  }
+
+  pub fn can_boost(&self) -> bool {
+    self.cooldown.is_none() && self.boost > 0.0
+  }
+}
+
+impl Default for Boost {
+  fn default() -> Self {
+    Self {
+      max_boost: 100.0,
+      boost: 100.0,
+      cooldown: None,
+      inc_amount: 10.0,
+      dec_amount: 50.0,
+      cooldown_sec: Some(2.0),
+    }
+  }
+}

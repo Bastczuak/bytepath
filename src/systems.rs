@@ -25,6 +25,7 @@ pub fn player_spawn_system(mut commands: Commands) {
       translation: glam::Vec3::new(SCREEN_WIDTH as f32 / 2.0, SCREEN_HEIGHT as f32 / 2.0, Z_INDEX_PLAYER),
       ..Default::default()
     })
+    .insert(Boost::default())
     .insert(Interpolation::new(vec![(8.0, 0.0)], 0.24));
 }
 
@@ -60,24 +61,34 @@ pub fn shooting_system(
 
 pub fn player_system(
   mut commands: Commands,
-  mut query: Query<(&Player, &mut Transform, Entity)>,
+  mut query: Query<(&Player, &mut Transform, &mut Boost, Entity)>,
   mut event_writer: EventWriter<GameEvents>,
   mut circles: ResMut<CircleGeometry>,
   mut tessellator: ResMut<StrokeTessellator>,
   keycodes: Res<HashSet<Keycode>>,
   time: Res<Time>,
 ) {
-  for (player, mut transform, entity) in query.iter_mut() {
+  for (player, mut transform, mut boost, entity) in query.iter_mut() {
     let mut rotation_factor = 0.0;
     let mut movement_factor = 1.0;
     let time = time.as_secs_f32();
 
     for keycode in keycodes.iter() {
       match keycode {
-        Keycode::Up => movement_factor = 1.5,
+        Keycode::Up => {
+          if boost.can_boost() {
+            movement_factor = 1.5;
+            boost.boost -= boost.dec_amount * time;
+          }
+        }
+        Keycode::Down => {
+          if boost.can_boost() {
+            movement_factor = 0.5;
+            boost.boost -= boost.dec_amount * time;
+          }
+        }
         Keycode::Left => rotation_factor += 1.0,
         Keycode::Right => rotation_factor -= 1.0,
-        Keycode::Down => movement_factor = 0.5,
         Keycode::S => {
           event_writer.send(GameEvents::PlayerDeath);
           commands.entity(entity).despawn();
@@ -85,6 +96,16 @@ pub fn player_system(
         _ => {}
       }
     }
+
+    if boost.is_empty() && boost.no_cooldown() {
+      boost.cooldown = boost.cooldown_sec;
+    } else if let Some(mut cooldown) = boost.cooldown.take() {
+      cooldown -= time;
+      if cooldown > 0.0 {
+        boost.cooldown.replace(cooldown);
+      }
+    }
+    boost.boost = boost.max_boost.min(boost.boost + boost.inc_amount * time);
 
     transform.rotation *= glam::Quat::from_rotation_z(rotation_factor * player.rotation_speed * time);
     let movement_direction = transform.rotation * glam::Vec3::Y;
@@ -137,6 +158,7 @@ pub fn trail_effect_spawn_system(
 pub fn trail_effect_system(
   mut commands: Commands,
   mut query: Query<(&TrailEffect, &mut Interpolation, &Transform, Entity)>,
+  boost: Query<&Boost>,
   mut circles: ResMut<CircleGeometry>,
   mut tessellator: ResMut<FillTessellator>,
   keycodes: Res<HashSet<Keycode>>,
@@ -151,11 +173,13 @@ pub fn trail_effect_system(
 
     let mut color_rgba = ColorGl::from(RGB_COLOR_TRAIL);
 
-    for keycode in keycodes.iter() {
-      match keycode {
-        Keycode::Up => color_rgba = ColorGl::from(RGB_COLOR_BOOST),
-        Keycode::Down => color_rgba = ColorGl::from(RGB_COLOR_BOOST),
-        _ => {}
+    if boost.single().can_boost() {
+      for keycode in keycodes.iter() {
+        match keycode {
+          Keycode::Up => color_rgba = ColorGl::from(RGB_COLOR_BOOST),
+          Keycode::Down => color_rgba = ColorGl::from(RGB_COLOR_BOOST),
+          _ => {}
+        }
       }
     }
 
@@ -290,7 +314,11 @@ pub fn camera_shake_system(
     fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
       move |n| {
         let n = n as usize;
-        if n >= samples.len() { 0.0 } else { samples[n] }
+        if n >= samples.len() {
+          0.0
+        } else {
+          samples[n]
+        }
       }
     }
     let noise_x = noise(&shake.samples_x);
