@@ -173,7 +173,7 @@ pub fn trail_effect_system(
 
     let mut color_rgba = ColorGl::from(RGB_COLOR_TRAIL);
 
-    if let Some(boost) = boost.get_single().ok() {
+    if let Ok(boost) = boost.get_single() {
       if boost.can_boost() {
         for keycode in keycodes.iter() {
           match keycode {
@@ -656,7 +656,7 @@ pub fn ammo_pickup_system(
       continue;
     }
 
-    if let Some(player) = player_query.get_single().ok() {
+    if let Ok(player) = player_query.get_single() {
       let player_translation = player.translation.xy();
       let ammo_forward = (transform.rotation * glam::Vec3::Y).xy();
       let to_player = (player_translation - transform.translation.xy()).normalize();
