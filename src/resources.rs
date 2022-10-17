@@ -118,6 +118,7 @@ pub struct Line {}
 pub struct EntitySpawnTimer {
   pub projectile: Duration,
   pub tick_effect: Duration,
+  pub ammo_pickup: Duration,
 }
 
 #[derive(Debug, Default)]

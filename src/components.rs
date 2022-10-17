@@ -1,3 +1,4 @@
+use crate::color::ColorGl;
 use crate::easings::EasingFunction;
 use bevy_ecs::prelude::*;
 use std::time::Duration;
@@ -19,7 +20,9 @@ pub struct DeadProjectile {
 }
 
 #[derive(Component)]
-pub struct PlayerExplosion;
+pub struct ExplosionEffect {
+  pub color: ColorGl,
+}
 
 #[derive(Component)]
 pub struct TickEffect;
@@ -31,11 +34,16 @@ pub struct TrailEffect;
 pub struct Transform {
   pub rotation: glam::Quat,
   pub translation: glam::Vec3,
+  pub center_rotation: glam::Quat,
 }
 
 impl Transform {
   pub fn mat4(&self) -> glam::Mat4 {
     glam::Mat4::from_rotation_translation(self.rotation, self.translation)
+  }
+
+  pub fn mat4_center(&self) -> glam::Mat4 {
+    glam::Mat4::from_rotation_translation(self.center_rotation, self.translation)
   }
 }
 
@@ -76,7 +84,6 @@ impl Interpolation {
   }
 }
 
-
 #[derive(Component, Debug)]
 pub struct Boost {
   pub max_boost: f32,
@@ -112,4 +119,12 @@ impl Default for Boost {
       cooldown_sec: Some(2.0),
     }
   }
+}
+
+#[derive(Component, Debug)]
+pub struct AmmoPickup {
+  pub movement_speed: f32,
+  pub rotation_speed: f32,
+  pub center_rotation_speed: f32,
+  pub timer: Duration,
 }

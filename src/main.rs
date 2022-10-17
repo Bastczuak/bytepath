@@ -94,11 +94,13 @@ fn main() -> Result<(), String> {
     stage.add_system(projectile_system.after(player_system));
     stage.add_system(projectile_death_system.after(projectile_system));
     stage.add_system(player_explosion_spawn_system.after(player_system));
-    stage.add_system(player_explosion_system.after(player_explosion_spawn_system));
     stage.add_system(trail_effect_spawn_system.after(player_system));
+    stage.add_system(ammo_pickup_system.after(player_system));
     stage.add_system(trail_effect_system.after(trail_effect_spawn_system));
     stage.add_system(camera_shake_system);
     stage.add_system(screen_flash_system);
+    stage.add_system(ammo_pickup_spawn_system);
+    stage.add_system(explosion_system);
 
     stage
   });
