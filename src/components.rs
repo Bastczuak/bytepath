@@ -1,7 +1,7 @@
 use crate::color::ColorGl;
 use crate::easings::EasingFunction;
 use bevy_ecs::prelude::*;
-use std::time::Duration;
+use crate::Timer;
 
 #[derive(Component, Debug)]
 pub struct Player {
@@ -16,7 +16,7 @@ pub struct Projectile {
 
 #[derive(Component, Debug)]
 pub struct DeadProjectile {
-  pub timer: Duration,
+  pub timer: Timer,
 }
 
 #[derive(Component)]
@@ -126,5 +126,5 @@ pub struct AmmoPickup {
   pub movement_speed: f32,
   pub rotation_speed: f32,
   pub center_rotation_speed: f32,
-  pub timer: Duration,
+  pub timer: Timer,
 }

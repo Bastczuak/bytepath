@@ -226,7 +226,7 @@ pub fn player_explosion_spawn_system(
                 ..*transform
               })
               .insert(ExplosionEffect {
-                color: ColorGl::from(RGB_COLOR_PLAYER)
+                color: ColorGl::from(RGB_COLOR_PLAYER),
               })
               .insert(Interpolation::new(
                 vec![(movement_speed, 0.0), (length, 0.0), (width, 0.0)],
@@ -373,16 +373,11 @@ pub fn screen_flash_system(
 pub fn projectile_spawn_system(
   query: Query<(&Player, &Transform)>,
   mut commands: Commands,
-  time: Res<Time>,
-  mut timer: ResMut<EntitySpawnTimer>,
+  timer: Res<EntitySpawnTimer>,
   keycodes: Res<HashSet<Keycode>>,
 ) {
   for (player, transform) in query.iter() {
-    timer.projectile += **time;
-
-    if timer.projectile.as_secs_f32() >= 0.25 {
-      timer.projectile = Duration::default();
-
+    if timer.projectile.finished {
       let movement_direction = transform.rotation * glam::Vec3::Y;
       let translation_delta = movement_direction * 12.0;
       let translation = transform.translation + translation_delta;
@@ -459,7 +454,7 @@ pub fn projectile_system(
           ..Default::default()
         })
         .insert(DeadProjectile {
-          timer: Duration::default(),
+          timer: Timer::from_seconds(0.25, false),
         });
     }
 
@@ -493,14 +488,14 @@ pub fn projectile_death_system(
   time: Res<Time>,
 ) {
   for (mut dead_projectile, transform, entity) in query.iter_mut() {
-    dead_projectile.timer += **time;
+    dead_projectile.timer.tick(**time);
 
-    if dead_projectile.timer.as_secs_f32() >= 0.25 {
+    if dead_projectile.timer.finished {
       commands.entity(entity).despawn();
       continue;
     }
 
-    let color_rgba = if dead_projectile.timer.as_secs_f32() >= 0.1 {
+    let color_rgba = if dead_projectile.timer.elapsed >= 0.1 {
       ColorGl::from(RGB_COLOR_DEATH)
     } else {
       ColorGl::from(RGB_COLOR_PLAYER)
@@ -518,6 +513,7 @@ pub fn projectile_death_system(
 
 pub fn timing_system(
   mut event_reader: EventReader<GameEvents>,
+  mut timers: ResMut<EntitySpawnTimer>,
   raw_time: Res<Duration>, // this is set in main() with *world.resource_mut() = dt;
   mut time: ResMut<Time>,
 ) {
@@ -538,20 +534,15 @@ pub fn timing_system(
   } else {
     **time = *raw_time;
   }
+
+  for timer in timers.as_array() {
+    timer.tick(**time);
+  }
 }
 
-pub fn tick_effect_spawn_system(
-  query: Query<&Player>,
-  mut commands: Commands,
-  time: Res<Time>,
-  mut timer: ResMut<EntitySpawnTimer>,
-) {
+pub fn tick_effect_spawn_system(query: Query<&Player>, mut commands: Commands, timer: Res<EntitySpawnTimer>) {
   for _ in query.iter() {
-    timer.tick_effect += **time;
-
-    if timer.tick_effect.as_secs_f32() >= 5.0 {
-      timer.tick_effect = Duration::default();
-
+    if timer.tick_effect.finished {
       commands
         .spawn()
         .insert(TickEffect)
@@ -597,15 +588,10 @@ pub fn tick_effect_system(
 
 pub fn ammo_pickup_spawn_system(
   mut commands: Commands,
-  time: Res<Time>,
-  mut timer: ResMut<EntitySpawnTimer>,
+  timer: Res<EntitySpawnTimer>,
   mut rng: ResMut<rand::rngs::SmallRng>,
 ) {
-  timer.ammo_pickup += **time;
-
-  if timer.ammo_pickup.as_secs_f32() >= 1.0 {
-    timer.ammo_pickup = Duration::default();
-
+  if timer.ammo_pickup.finished {
     let x = rng.gen_range(8.0..SCREEN_WIDTH as f32 - 8.0);
     let y = rng.gen_range(8.0..SCREEN_HEIGHT as f32 - 8.0);
     let rotation = glam::Quat::from_rotation_z(rng.gen_range(0.0..2.0 * std::f32::consts::PI));
@@ -618,7 +604,7 @@ pub fn ammo_pickup_spawn_system(
         movement_speed,
         rotation_speed,
         center_rotation_speed: rng.gen_range(-2.0 * std::f32::consts::PI..2.0 * std::f32::consts::PI),
-        timer: Duration::default(),
+        timer: Timer::from_seconds(0.15, false),
       })
       .insert(Transform {
         translation: glam::vec3(x, y, Z_INDEX_AMMO_PICKUP),
@@ -645,15 +631,14 @@ pub fn ammo_pickup_system(
       continue;
     }
 
-    if ammo.timer.as_secs_f32() >= 0.15 {
+    if ammo.timer.finished {
       commands.entity(entity).despawn();
       continue;
     }
 
-    if ammo.timer.as_secs_f32() > 0.0 {
-      ammo.timer += **time;
-      let mat4 =
-        transform.mat4_center() * glam::Mat4::from_translation(glam::vec3(9.5 / -2.0, 9.5 / -2.0, 1.0));
+    if ammo.timer.elapsed > 0.0 {
+      ammo.timer.tick(**time);
+      let mat4 = transform.mat4_center() * glam::Mat4::from_translation(glam::vec3(9.5 / -2.0, 9.5 / -2.0, 1.0));
 
       fills
         .tessellate_rectangle(
@@ -690,7 +675,7 @@ pub fn ammo_pickup_system(
 
       let distance = (transform.translation - player.translation).length();
       if distance < 8.0 + 12.0 {
-        ammo.timer += **time;
+        ammo.timer.tick(**time);
 
         for _ in 0..rng.gen_range(4usize..8usize) {
           let length = 5.0;
@@ -706,7 +691,7 @@ pub fn ammo_pickup_system(
               ..*transform
             })
             .insert(ExplosionEffect {
-              color: ColorGl::from(RGB_COLOR_AMMO_PICKUP)
+              color: ColorGl::from(RGB_COLOR_AMMO_PICKUP),
             })
             .insert(Interpolation::new(
               vec![(movement_speed, 0.0), (length, 0.0), (width, 0.0)],
@@ -722,8 +707,7 @@ pub fn ammo_pickup_system(
     let translation_delta = movement_direction * movement_distance;
     transform.translation += translation_delta;
 
-    let mat4 =
-      transform.mat4_center() * glam::Mat4::from_translation(glam::vec3(8.0 / -2.0, 8.0 / -2.0, 1.0));
+    let mat4 = transform.mat4_center() * glam::Mat4::from_translation(glam::vec3(8.0 / -2.0, 8.0 / -2.0, 1.0));
 
     strokes
       .tessellate_rectangle(

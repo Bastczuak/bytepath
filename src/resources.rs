@@ -103,22 +103,38 @@ impl<T> DrawBuffers<T> {
 }
 
 #[derive(Debug)]
-pub struct Circle {}
+pub struct Circle;
 
 #[derive(Debug)]
-pub struct Rectangle {}
+pub struct Rectangle;
 
 #[derive(Debug)]
-pub struct Quad {}
+pub struct Quad;
 
 #[derive(Debug)]
-pub struct Line {}
+pub struct Line;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct EntitySpawnTimer {
-  pub projectile: Duration,
-  pub tick_effect: Duration,
-  pub ammo_pickup: Duration,
+  pub projectile: Timer,
+  pub tick_effect: Timer,
+  pub ammo_pickup: Timer,
+}
+
+impl Default for EntitySpawnTimer {
+  fn default() -> Self {
+    Self {
+      projectile: Timer::from_seconds(0.25, true),
+      tick_effect: Timer::from_seconds(5.0, true),
+      ammo_pickup: Timer::from_seconds(1.0, true),
+    }
+  }
+}
+
+impl EntitySpawnTimer {
+  pub fn as_array(&mut self) -> [&mut Timer; 3] {
+    [&mut self.projectile, &mut self.tick_effect, &mut self.ammo_pickup]
+  }
 }
 
 #[derive(Debug, Default)]
@@ -138,5 +154,40 @@ impl Deref for Time {
 impl DerefMut for Time {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.duration
+  }
+}
+
+#[derive(Debug, Default)]
+pub struct Timer {
+  pub elapsed: f32,
+  pub duration: f32,
+  pub finished: bool,
+  pub repeating: bool,
+}
+
+impl Timer {
+  pub fn from_seconds(seconds: f32, repeating: bool) -> Self {
+    Self {
+      duration: seconds,
+      repeating,
+      ..Default::default()
+    }
+  }
+
+  pub fn tick(&mut self, delta: Duration) {
+    self.elapsed = (self.elapsed + delta.as_secs_f32()).min(self.duration);
+
+    if self.repeating && self.finished {
+      self.reset();
+    }
+
+    if self.elapsed >= self.duration {
+      self.finished = true;
+    }
+  }
+
+  pub fn reset(&mut self) {
+    self.finished = false;
+    self.elapsed = 0.0;
   }
 }
