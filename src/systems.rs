@@ -1,1207 +1,742 @@
-use crate::components::Boost;
 use crate::{
-  components::{
-    Ammunition, AmmunitionRes, Angle, Animation, BoostRes, Interpolation, LineParticle, Player, Position, Projectile,
-    ShootingEffect, Sprite, TickEffect, TrailEffect, Velocity,
-  },
-  easings::{ease_in_out_cubic, linear},
-  environment::{RGB_COLOR_AMMUNITION, Z_INDEX_BOOST_TRAIL, Z_INDEX_PLAYER},
-  resources::{
-    Flash, GameEvents,
-    GameEvents::{PlayerDeath, PlayerSpawn},
-    GameEventsChannel, Shake,
-  },
-  SCREEN_HEIGHT, SCREEN_WIDTH,
+  color::ColorGl, components::*, easings::*, environment::*, render::WithTransformColor, resources::*, GameEvents,
 };
-use rand::{Rng, SeedableRng};
-use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
-use specs::prelude::*;
-use std::{collections::HashSet, f32::consts::PI, time::Duration};
+use bevy_ecs::prelude::*;
+use glam::Vec3Swizzles;
+use lyon::{
+  geom::{Box2D, Size},
+  lyon_tessellation::FillOptions,
+  math::{point, Point},
+  path::Path,
+  tessellation::{BuffersBuilder, FillTessellator, StrokeOptions, StrokeTessellator},
+};
+use rand::Rng;
+use sdl2::keyboard::Keycode;
+use std::{collections::HashSet, time::Duration};
 
-#[derive(Default)]
-pub struct BoostSystem {
-  rng: Option<rand::rngs::SmallRng>,
+pub fn player_spawn_system(mut commands: Commands) {
+  commands
+    .spawn()
+    .insert(Player {
+      movement_speed: 100.0,
+      rotation_speed: 360.0f32.to_radians(),
+    })
+    .insert(Transform {
+      translation: glam::Vec3::new(SCREEN_WIDTH as f32 / 2.0, SCREEN_HEIGHT as f32 / 2.0, Z_INDEX_PLAYER),
+      ..Default::default()
+    })
+    .insert(Boost::default())
+    .insert(Interpolation::new(vec![(8.0, 0.0)], 0.24));
 }
 
-impl<'a> System<'a> for BoostSystem {
-  type SystemData = (
-    Entities<'a>,
-    Read<'a, LazyUpdate>,
-    Read<'a, HashSet<Keycode>>,
-    Read<'a, Duration>,
-    ReadStorage<'a, Boost>,
-    ReadStorage<'a, Angle>,
-    WriteStorage<'a, Sprite>,
-    WriteStorage<'a, Position>,
-    WriteStorage<'a, Velocity>,
-  );
+pub fn shooting_system(
+  mut query: Query<(&Player, &Transform, &mut Interpolation)>,
+  mut quads: ResMut<QuadGeometry>,
+  mut tessellator: ResMut<FillTessellator>,
+  time: Res<Time>,
+) {
+  for (_, transform, mut interpolation) in query.iter_mut() {
+    let (values, _) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
+    let mat4 =
+      glam::Mat4::from_rotation_translation(
+        transform.rotation * glam::Quat::from_rotation_z(45.0f32.to_radians()),
+        transform.translation,
+      ) * glam::Mat4::from_translation(glam::vec3(8.0 - values[0] / 2.0, 8.0 - values[0] / 2.0, Z_INDEX_PLAYER));
 
-  fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, keycodes, time, boosts, angles, mut sprites, mut positions, mut velocities) = data;
+    tessellator
+      .tessellate_rectangle(
+        &Box2D::from_size(Size::new(values[0], values[0])),
+        &FillOptions::default(),
+        &mut BuffersBuilder::new(
+          &mut quads.vertex_buffer,
+          WithTransformColor {
+            transform: mat4,
+            color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
+          },
+        ),
+      )
+      .unwrap();
+  }
+}
+
+pub fn player_system(
+  mut commands: Commands,
+  mut query: Query<(&Player, &mut Transform, &mut Boost, Entity)>,
+  mut event_writer: EventWriter<GameEvents>,
+  mut circles: ResMut<CircleGeometry>,
+  mut tessellator: ResMut<StrokeTessellator>,
+  keycodes: Res<HashSet<Keycode>>,
+  time: Res<Time>,
+) {
+  for (player, mut transform, mut boost, entity) in query.iter_mut() {
+    let mut rotation_factor = 0.0;
+    let mut movement_factor = 1.0;
+    let time = time.as_secs_f32();
 
     for keycode in keycodes.iter() {
-      if keycode == &Keycode::S {
-        let rng = self
-          .rng
-          .as_mut()
-          .expect("rng Should not be None! Did you forget to initialize in setup()?");
-        let direction = if rng.gen_bool(1.0 / 2.0) { -1.0 } else { 1.0 };
-        lazy
-          .create_entity(&entities)
-          .with(Boost)
-          .with(Sprite {
-            texture_idx: 7,
-            region: Rect::new(0, 0, 18, 18),
-            ..Default::default()
-          })
-          .with(Position {
-            x: SCREEN_WIDTH as f32 / 2.0 + direction * (SCREEN_WIDTH as f32 / 2.0 + 48.0),
-            y: rng.gen_range(48.0..SCREEN_HEIGHT as f32 - 48.0),
-          })
-          .with(Velocity::new_x(-direction * rng.gen_range(20.0..40.0)))
-          .with(Angle {
-            velocity: rng.gen_range(-4.0..4.0) * PI,
-            ..Default::default()
-          })
-          .build();
-      }
-    }
-
-    for (_, e, angle, sprite, position, velocity) in (
-      &boosts,
-      &entities,
-      &angles,
-      &mut sprites,
-      &mut positions,
-      &mut velocities,
-    )
-      .join()
-    {
-      sprite.rotation += ((angle.velocity * 180.0 / PI) * time.as_secs_f32()) as f64;
-      position.x += velocity.x * time.as_secs_f32();
-      position.y += velocity.y * time.as_secs_f32();
-
-      let sprite_offset_x = sprite.width() / 2.0 + 48.0;
-      if (position.x + sprite_offset_x) < 0.0 || (position.x - sprite_offset_x) > SCREEN_WIDTH as f32 {
-        entities.delete(e).unwrap();
-      }
-    }
-  }
-
-  fn setup(&mut self, world: &mut World) {
-    Self::SystemData::setup(world);
-    self.rng = Some(rand::rngs::SmallRng::from_entropy());
-  }
-}
-
-#[derive(Default)]
-pub struct AmmunitionSystem {
-  rng: Option<rand::rngs::SmallRng>,
-}
-
-impl<'a> System<'a> for AmmunitionSystem {
-  #[allow(clippy::type_complexity)]
-  type SystemData = (
-    Entities<'a>,
-    Read<'a, LazyUpdate>,
-    Read<'a, HashSet<Keycode>>,
-    Read<'a, Duration>,
-    ReadStorage<'a, Player>,
-    ReadStorage<'a, Ammunition>,
-    ReadStorage<'a, Angle>,
-    WriteStorage<'a, Sprite>,
-    WriteStorage<'a, Position>,
-    WriteStorage<'a, Velocity>,
-  );
-
-  fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, keycodes, time, players, ammunition, angles, mut sprites, mut positions, mut velocities) =
-      data;
-
-    for keycode in keycodes.iter() {
-      if keycode == &Keycode::S {
-        let rng = self
-          .rng
-          .as_mut()
-          .expect("rng Should not be None! Did you forget to initialize in setup()?");
-        lazy
-          .create_entity(&entities)
-          .with(Ammunition)
-          .with(Sprite {
-            texture_idx: 6,
-            region: Rect::new(0, 0, 6, 6),
-            ..Default::default()
-          })
-          .with(Position {
-            x: rng.gen_range(0.0..SCREEN_WIDTH as f32),
-            y: rng.gen_range(0.0..SCREEN_HEIGHT as f32),
-          })
-          .with(Velocity::new(rng.gen_range(10.0..20.0)))
-          .with(Angle {
-            radians: rng.gen_range(0.0..2.0) * PI,
-            velocity: rng.gen_range(-4.0..4.0) * PI,
-          })
-          .build();
-      }
-    }
-
-    fn normalize((x, y): (f32, f32)) -> (f32, f32) {
-      let length = f32::sqrt(x * x + y * y);
-      (x / length, y / length)
-    }
-
-    let player_pos = (&players, &positions)
-      .join()
-      .collect::<Vec<_>>()
-      .get(0)
-      .map(|(_, pos)| **pos);
-
-    for (_, e, angle, sprite, position, velocity) in (
-      &ammunition,
-      &entities,
-      &angles,
-      &mut sprites,
-      &mut positions,
-      &mut velocities,
-    )
-      .join()
-    {
-      sprite.rotation += ((angle.velocity * 180.0 / PI) * time.as_secs_f32()) as f64;
-
-      if let Some(player_pos) = player_pos {
-        let projectile_heading = normalize((velocity.x, velocity.y));
-        let angle = f32::atan2(player_pos.y - position.y, player_pos.x - position.x);
-        let to_target_heading = normalize((f32::cos(angle), f32::sin(angle)));
-        let final_heading = normalize((
-          projectile_heading.0 + 0.1 * to_target_heading.0,
-          projectile_heading.1 + 0.1 * to_target_heading.1,
-        ));
-        velocity.x = velocity.base_x * final_heading.0;
-        velocity.y = velocity.base_y * final_heading.1;
-      }
-
-      position.x += velocity.x * time.as_secs_f32() * f32::cos(angle.radians);
-      position.y += velocity.y * time.as_secs_f32() * f32::sin(angle.radians);
-
-      let sprite_offset_x = sprite.width() / 2.0;
-      let sprite_offset_y = sprite.height() / 2.0;
-      if (position.x + sprite_offset_x) < 0.0
-        || (position.x - sprite_offset_x) > SCREEN_WIDTH as f32
-        || (position.y + sprite_offset_y) < 0.0
-        || (position.y - sprite_offset_y) > SCREEN_HEIGHT as f32
-      {
-        entities.delete(e).unwrap();
-      }
-    }
-  }
-
-  fn setup(&mut self, world: &mut World) {
-    Self::SystemData::setup(world);
-    self.rng = Some(rand::rngs::SmallRng::from_entropy());
-  }
-}
-
-#[derive(Default)]
-pub struct TrailEffectSystem {
-  timer: Option<f32>,
-  rng: Option<rand::rngs::SmallRng>,
-}
-
-impl<'a> System<'a> for TrailEffectSystem {
-  #[allow(clippy::type_complexity)]
-  type SystemData = (
-    Entities<'a>,
-    Read<'a, LazyUpdate>,
-    Read<'a, Duration>,
-    Read<'a, HashSet<Keycode>>,
-    WriteStorage<'a, Interpolation>,
-    WriteStorage<'a, Animation>,
-    WriteStorage<'a, Sprite>,
-    ReadStorage<'a, Position>,
-    ReadStorage<'a, Angle>,
-    ReadStorage<'a, Player>,
-    ReadStorage<'a, TrailEffect>,
-    ReadStorage<'a, BoostRes>,
-  );
-
-  fn run(&mut self, data: Self::SystemData) {
-    let (
-      entities,
-      lazy,
-      time,
-      keycodes,
-      mut interpolations,
-      mut animations,
-      mut sprites,
-      positions,
-      angles,
-      players,
-      effects,
-      boosts,
-    ) = data;
-
-    let player_boost = (&players, &boosts)
-      .join()
-      .collect::<Vec<_>>()
-      .get(0)
-      .map(|(_, boost)| *boost);
-
-    for (_, e, interpolation, animation, sprite) in
-      (&effects, &entities, &mut interpolations, &mut animations, &mut sprites).join()
-    {
-      let (values, finished) = interpolation.eval(time.as_secs_f32(), linear);
-
-      if let Some(player_boost) = player_boost {
-        if (keycodes.contains(&Keycode::Up) || keycodes.contains(&Keycode::Down)) && player_boost.can_boost() {
-          // TODO: The Sprite struct is copied every single frame but it should just get toggled
-          *sprite = animation.frames[1];
-        } else {
-          // TODO: The Sprite struct is copied every single frame but it should just get toggled
-          *sprite = animation.frames[0];
-        }
-      } else {
-        // TODO: The Sprite struct is copied every single frame but it should just get toggled
-        *sprite = animation.frames[0];
-      }
-
-      sprite.scale = values[0];
-      if finished {
-        entities.delete(e).unwrap();
-      }
-    }
-
-    // don't spawn new effect if there is no player
-    if (&players, &entities).join().count() == 0 {
-      self.timer.replace(0.01);
-      return;
-    }
-
-    if let Some(mut timer) = self.timer.take() {
-      timer -= time.as_secs_f32();
-      if timer < 0.0 {
-        let rng = self
-          .rng
-          .as_mut()
-          .expect("rng Should not be None! Did you forget to initialize in setup()?");
-        let mut x = 0.0;
-        let mut y = 0.0;
-        let scale = rng.gen_range(0.25..0.35);
-        let width = 32;
-        let height = 32;
-        for (_, pos, angle) in (&players, &positions, &angles).join() {
-          x = pos.x - 0.5 * width as f32 * f32::cos(angle.radians);
-          y = pos.y - 0.5 * height as f32 * f32::sin(angle.radians);
-        }
-        lazy
-          .create_entity(&entities)
-          .with(TrailEffect)
-          .with(Position { x, y })
-          .with(Sprite::default())
-          .with(Animation {
-            frames: vec![
-              Sprite {
-                texture_idx: 5,
-                region: Rect::new(0, 0, width, height),
-                scale,
-                z_index: Z_INDEX_BOOST_TRAIL,
-                ..Default::default()
-              },
-              Sprite {
-                texture_idx: 5,
-                region: Rect::new(32, 0, width, height),
-                scale,
-                z_index: Z_INDEX_BOOST_TRAIL,
-                ..Default::default()
-              },
-            ],
-            ..Default::default()
-          })
-          .with(Interpolation::new(vec![(scale, 0.0)], rng.gen_range(0.15..0.25)))
-          .build();
-        self.timer.replace(0.01);
-      } else {
-        self.timer.replace(timer);
-      }
-    }
-  }
-
-  fn setup(&mut self, world: &mut World) {
-    Self::SystemData::setup(world);
-    self.timer = Some(0.01);
-    self.rng = Some(rand::rngs::SmallRng::from_entropy());
-  }
-}
-
-#[derive(Default)]
-pub struct TickEffectSystem {
-  timer: Option<f32>,
-}
-
-impl<'a> System<'a> for TickEffectSystem {
-  #[allow(clippy::type_complexity)]
-  type SystemData = (
-    Entities<'a>,
-    Read<'a, LazyUpdate>,
-    Read<'a, Duration>,
-    WriteStorage<'a, Position>,
-    WriteStorage<'a, Interpolation>,
-    WriteStorage<'a, Sprite>,
-    ReadStorage<'a, Player>,
-    ReadStorage<'a, TickEffect>,
-  );
-
-  fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, time, mut positions, mut interpolations, mut sprites, players, effects) = data;
-
-    // don't process any effects if there is no player entity and make sure to clean up existing ones.
-    if (&players, &entities).join().count() == 0 {
-      for (_, e) in (&effects, &entities).join() {
-        entities.delete(e).unwrap();
-        self.timer.replace(5.0);
-      }
-      return;
-    }
-
-    let mut x = 0.0;
-    let mut y = 0.0;
-    for (_, pos) in (&players, &positions).join() {
-      x = pos.x;
-      y = pos.y;
-    }
-
-    for (e, _, pos, interpolation, sprite) in
-      (&entities, &effects, &mut positions, &mut interpolations, &mut sprites).join()
-    {
-      let (values, finished) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
-      pos.x = x;
-      pos.y = y - values[1];
-      sprite.region = Rect::new(0, 0, sprite.region.width(), values[0] as u32);
-      if finished {
-        entities.delete(e).unwrap();
-      }
-    }
-
-    if let Some(mut timer) = self.timer.take() {
-      timer -= time.as_secs_f32();
-      if timer < 0.0 {
-        lazy
-          .create_entity(&entities)
-          .with(TickEffect)
-          .with(Position { x, y })
-          .with(Sprite {
-            texture_idx: 4,
-            region: Rect::new(0, 0, 48, 32),
-            ..Default::default()
-          })
-          .with(Interpolation::new(vec![(32.0, 0.0), (0.0, 32.0)], 0.1))
-          .build();
-        self.timer.replace(5.0);
-      } else {
-        self.timer.replace(timer);
-      }
-    }
-  }
-
-  fn setup(&mut self, world: &mut World) {
-    Self::SystemData::setup(world);
-    self.timer = Some(5.0);
-  }
-}
-
-#[derive(Default)]
-pub struct FlashSystem {
-  reader_id: Option<ReaderId<GameEvents>>,
-}
-
-impl<'a> System<'a> for FlashSystem {
-  type SystemData = (Write<'a, Flash>, Write<'a, GameEventsChannel>);
-
-  fn run(&mut self, (mut flash, events): Self::SystemData) {
-    for event in events.read(
-      self
-        .reader_id
-        .as_mut()
-        .expect("reader_id Should not be None! Did you forget to initialize in setup()?"),
-    ) {
-      if let PlayerDeath(_) = event {
-        flash.0 = 4;
-      }
-    }
-
-    if flash.0 > 0 {
-      flash.0 -= 1;
-    }
-  }
-
-  fn setup(&mut self, world: &mut World) {
-    Self::SystemData::setup(world);
-    self.reader_id = Some(Write::<GameEventsChannel>::fetch(world).register_reader());
-  }
-
-  fn dispose(self, _: &mut World)
-  where
-    Self: Sized,
-  {
-    drop(self.reader_id)
-  }
-}
-
-#[derive(Default)]
-pub struct ShakeSystem {
-  duration: f32,
-  frequency: f32,
-  amplitude: f32,
-  samples_x: Vec<f32>,
-  samples_y: Vec<f32>,
-  time: f32,
-  is_shaking: bool,
-  reader_id: Option<ReaderId<GameEvents>>,
-}
-
-impl<'a> System<'a> for ShakeSystem {
-  type SystemData = (Read<'a, Duration>, Write<'a, Shake>, Write<'a, GameEventsChannel>);
-
-  fn run(&mut self, (time, mut shake, events): Self::SystemData) {
-    for event in events.read(
-      self
-        .reader_id
-        .as_mut()
-        .expect("reader_id Should not be None! Did you forget to initialize in setup()?"),
-    ) {
-      if let PlayerDeath(_) = event {
-        self.is_shaking = true;
-      }
-    }
-
-    if self.is_shaking {
-      self.time += time.as_secs_f32();
-      if self.time > self.duration {
-        self.time = 0.0;
-        self.is_shaking = false;
-        return;
-      }
-
-      let s = self.time * self.frequency;
-      let s0 = f32::floor(s);
-      let s1 = s0 + 1.0;
-      let k = if self.time >= self.duration {
-        0.0
-      } else {
-        (self.duration - self.time) / self.duration
-      };
-
-      fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
-        move |n| {
-          let n = n as usize;
-          if n >= samples.len() {
-            0.0
-          } else {
-            samples[n]
+      match keycode {
+        Keycode::Up => {
+          if boost.can_boost() {
+            movement_factor = 1.5;
+            boost.boost -= boost.dec_amount * time;
           }
         }
-      }
-      let noise_x = noise(&self.samples_x);
-      let noise_y = noise(&self.samples_y);
-      let amplitude = |noise_fn: &dyn Fn(f32) -> f32| -> i32 {
-        ((noise_fn(s0) + (s - s0) * (noise_fn(s1) - noise_fn(s0))) * k * self.amplitude) as i32
-      };
-
-      shake.x = amplitude(&noise_x);
-      shake.y = amplitude(&noise_y);
-    }
-  }
-
-  fn setup(&mut self, world: &mut World) {
-    Self::SystemData::setup(world);
-    self.duration = 0.4;
-    self.frequency = 60.0;
-    self.amplitude = 6.0;
-    let sample_count = (self.duration * self.frequency) as usize;
-    let mut rng = rand::rngs::SmallRng::from_entropy();
-    self.samples_x = (0..sample_count).map(|_| rng.gen_range(0.0..1.0) * 2.0 - 1.0).collect();
-    self.samples_y = (0..sample_count).map(|_| rng.gen_range(0.0..1.0) * 2.0 - 1.0).collect();
-    self.reader_id = Some(Write::<GameEventsChannel>::fetch(world).register_reader());
-  }
-
-  fn dispose(self, _: &mut World)
-  where
-    Self: Sized,
-  {
-    drop(self.reader_id);
-  }
-}
-
-pub struct PlayerSystem;
-
-impl<'a> System<'a> for PlayerSystem {
-  #[allow(clippy::type_complexity)]
-  type SystemData = (
-    Entities<'a>,
-    Read<'a, LazyUpdate>,
-    Read<'a, HashSet<Keycode>>,
-    Read<'a, Duration>,
-    ReadStorage<'a, Player>,
-    ReadStorage<'a, AmmunitionRes>,
-    Write<'a, GameEventsChannel>,
-    WriteStorage<'a, Sprite>,
-    WriteStorage<'a, Velocity>,
-    WriteStorage<'a, Position>,
-    WriteStorage<'a, Angle>,
-    WriteStorage<'a, BoostRes>,
-  );
-
-  fn run(&mut self, data: Self::SystemData) {
-    let (
-      entities,
-      lazy,
-      keycodes,
-      time,
-      players,
-      _,
-      mut events,
-      mut sprites,
-      mut velocities,
-      mut positions,
-      mut angles,
-      mut boosts,
-    ) = data;
-
-    for (_, e, sprite, velocity, position, angle, boost) in (
-      &players,
-      &entities,
-      &mut sprites,
-      &mut velocities,
-      &mut positions,
-      &mut angles,
-      &mut boosts,
-    )
-      .join()
-    {
-      for keycode in keycodes.iter() {
-        match keycode {
-          Keycode::Left => angle.radians -= angle.velocity * time.as_secs_f32(),
-          Keycode::Right => angle.radians += angle.velocity * time.as_secs_f32(),
-          Keycode::Up => {
-            if boost.can_boost() {
-              velocity.x *= 1.5;
-              velocity.y *= 1.5;
-              boost.boost -= boost.dec_amount * time.as_secs_f32();
-            }
-          }
-          Keycode::Down => {
-            if boost.can_boost() {
-              velocity.x *= 0.5;
-              velocity.y *= 0.5;
-              boost.boost -= boost.dec_amount * time.as_secs_f32();
-            }
-          }
-          Keycode::D => {
-            entities.delete(e).unwrap();
-            events.single_write(GameEvents::PlayerDeath(*position));
-          }
-          _ => {}
-        }
-      }
-
-      if boost.is_empty() && boost.no_cooldown() {
-        boost.cooldown = boost.cooldown_sec;
-      } else if let Some(mut cooldown) = boost.cooldown.take() {
-        cooldown -= time.as_secs_f32();
-        if cooldown > 0.0 {
-          boost.cooldown.replace(cooldown);
-        }
-      }
-
-      sprite.rotation = (angle.radians * 180.0 / PI) as f64;
-      position.x += velocity.x * time.as_secs_f32() * f32::cos(angle.radians);
-      position.y += velocity.y * time.as_secs_f32() * f32::sin(angle.radians);
-      velocity.x = velocity.base_x;
-      velocity.y = velocity.base_y;
-      boost.boost = boost.max_boost.min(boost.boost + boost.inc_amount * time.as_secs_f32());
-
-      let sprite_offset_x = sprite.width() / 2.0;
-      let sprite_offset_y = sprite.height() / 2.0;
-      if (position.x - sprite_offset_x) < 0.0
-        || (position.x + sprite_offset_x) > SCREEN_WIDTH as f32
-        || (position.y - sprite_offset_y) < 0.0
-        || (position.y + sprite_offset_y) > SCREEN_HEIGHT as f32
-      {
-        entities.delete(e).unwrap();
-        events.single_write(GameEvents::PlayerDeath(*position));
-      }
-    }
-
-    for keycode in keycodes.iter() {
-      if let Keycode::S = keycode {
-        let number_of_players = (&players, &entities).join().count();
-        if number_of_players == 0 {
-          lazy
-            .create_entity(&entities)
-            .with(Player)
-            .with(Position {
-              x: SCREEN_WIDTH as f32 / 2.0,
-              y: SCREEN_HEIGHT as f32 / 2.0,
-            })
-            .with(Angle::default())
-            .with(Velocity::new(100.0))
-            .with(Sprite {
-              texture_idx: 0,
-              region: Rect::new(0, 0, 32, 32),
-              z_index: Z_INDEX_PLAYER,
-              ..Default::default()
-            })
-            .with(BoostRes::default())
-            .with(AmmunitionRes::default())
-            .build();
-          events.single_write(PlayerSpawn);
-        }
-      }
-    }
-  }
-
-  fn setup(&mut self, world: &mut World) {
-    Self::SystemData::setup(world);
-    world
-      .create_entity()
-      .with(Player)
-      .with(Position {
-        x: SCREEN_WIDTH as f32 / 2.0,
-        y: SCREEN_HEIGHT as f32 / 2.0,
-      })
-      .with(Angle::default())
-      .with(Velocity::new(100.0))
-      .with(Sprite {
-        texture_idx: 0,
-        region: Rect::new(0, 0, 32, 32),
-        z_index: Z_INDEX_PLAYER,
-        ..Default::default()
-      })
-      .with(BoostRes::default())
-      .with(AmmunitionRes::default())
-      .build();
-  }
-}
-
-#[derive(Default)]
-pub struct ShootingSystem {
-  reader_id: Option<ReaderId<GameEvents>>,
-}
-
-impl<'a> System<'a> for ShootingSystem {
-  #[allow(clippy::type_complexity)]
-  type SystemData = (
-    Entities<'a>,
-    Read<'a, LazyUpdate>,
-    Read<'a, Duration>,
-    Write<'a, GameEventsChannel>,
-    ReadStorage<'a, Player>,
-    ReadStorage<'a, Angle>,
-    ReadStorage<'a, ShootingEffect>,
-    WriteStorage<'a, Position>,
-    WriteStorage<'a, Sprite>,
-    WriteStorage<'a, Interpolation>,
-  );
-
-  fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, time, events, players, angles, effects, mut positions, mut sprites, mut interpolations) = data;
-    let mut x = 0.0;
-    let mut y = 0.0;
-    let mut rotation = 0.0;
-
-    // delete all shooting effects if there are no more players
-    if (&players, &entities).join().count() == 0 {
-      for (_, e) in (&effects, &entities).join() {
-        entities.delete(e).unwrap();
-      }
-      return;
-    }
-
-    for (_, angle, position, sprite) in (&players, &angles, &mut positions, &sprites).join() {
-      x = position.x + 0.5 * sprite.width() * f32::cos(angle.radians);
-      y = position.y + 0.5 * sprite.width() * f32::sin(angle.radians);
-      rotation = (angle.radians + PI / 4.0) * 180.0 / PI;
-    }
-
-    for (_, position, sprite, interpolation) in (&effects, &mut positions, &mut sprites, &mut interpolations).join() {
-      position.x = x;
-      position.y = y;
-      sprite.rotation = rotation as f64;
-      let (values, _) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
-      sprite.scale = values[0];
-    }
-
-    for event in events.read(
-      self
-        .reader_id
-        .as_mut()
-        .expect("reader_id Should not be None! Did you forget to initialize in setup()?"),
-    ) {
-      if let PlayerSpawn = event {
-        lazy
-          .create_entity(&entities)
-          .with(ShootingEffect)
-          .with(Position {
-            x: SCREEN_WIDTH as f32 / 2.0,
-            y: SCREEN_HEIGHT as f32 / 2.0,
-          })
-          .with(Sprite {
-            texture_idx: 1,
-            region: Rect::new(0, 0, 8, 8),
-            rotation: 45.0,
-            ..Default::default()
-          })
-          .with(Interpolation::new(vec![(1.0, 0.0)], 0.2))
-          .build();
-      }
-    }
-  }
-
-  fn setup(&mut self, world: &mut World) {
-    Self::SystemData::setup(world);
-    self.reader_id = Some(Write::<GameEventsChannel>::fetch(world).register_reader());
-    world
-      .create_entity()
-      .with(ShootingEffect)
-      .with(Position {
-        x: SCREEN_WIDTH as f32 / 2.0,
-        y: SCREEN_HEIGHT as f32 / 2.0,
-      })
-      .with(Sprite {
-        texture_idx: 1,
-        region: Rect::new(0, 0, 8, 8),
-        rotation: 45.0,
-        ..Default::default()
-      })
-      .with(Interpolation::new(vec![(1.0, 0.0)], 0.2))
-      .build();
-  }
-
-  fn dispose(self, _: &mut World)
-  where
-    Self: Sized,
-  {
-    drop(self.reader_id);
-  }
-}
-
-#[derive(Default)]
-pub struct ProjectileSystem {
-  spawn_time_s: Option<f32>,
-}
-
-impl<'a> System<'a> for ProjectileSystem {
-  #[allow(clippy::type_complexity)]
-  type SystemData = (
-    Entities<'a>,
-    Write<'a, GameEventsChannel>,
-    Read<'a, LazyUpdate>,
-    Read<'a, Duration>,
-    Read<'a, HashSet<Keycode>>,
-    ReadStorage<'a, Player>,
-    ReadStorage<'a, Projectile>,
-    ReadStorage<'a, Velocity>,
-    ReadStorage<'a, Angle>,
-    ReadStorage<'a, Sprite>,
-    WriteStorage<'a, Position>,
-  );
-
-  fn run(&mut self, data: Self::SystemData) {
-    const DISTANCE_MULTIPLIER: f32 = 0.8;
-    const PROJECTILE_HEIGHT: f32 = 8.0;
-    const PROJECTILE_WIDTH: f32 = 8.0;
-
-    let (entities, mut events, lazy, time, keycodes, players, projectiles, velocities, angles, sprites, mut positions) =
-      data;
-
-    for (_, e, velocity, angle, position) in (&projectiles, &entities, &velocities, &angles, &mut positions).join() {
-      position.x += velocity.x * time.as_secs_f32() * f32::cos(angle.radians);
-      position.y += velocity.y * time.as_secs_f32() * f32::sin(angle.radians);
-
-      if position.x < 0.0 || position.x > SCREEN_WIDTH as f32 || position.y < 0.0 || position.y > SCREEN_HEIGHT as f32 {
-        entities.delete(e).unwrap();
-        events.single_write(GameEvents::ProjectileDeath(*position));
-      }
-    }
-
-    if let Some(mut timer) = self.spawn_time_s.take() {
-      timer -= time.as_secs_f32();
-      if timer <= 0.0 {
-        for (_, p_angle, p_pos, p_sprite) in (&players, &angles, &positions, &sprites).join() {
-          if keycodes.contains(&Keycode::F1) {
-            for i in -1..2 {
-              lazy
-                .create_entity(&entities)
-                .with(Projectile)
-                .with(Position {
-                  x: p_pos.x
-                    + DISTANCE_MULTIPLIER * p_sprite.width() * f32::cos(p_angle.radians)
-                    + (i as f32 * PROJECTILE_WIDTH).abs() * f32::cos(p_angle.radians + i as f32 * PI / 2.0),
-                  y: p_pos.y
-                    + DISTANCE_MULTIPLIER * p_sprite.height() * f32::sin(p_angle.radians)
-                    + (i as f32 * PROJECTILE_HEIGHT).abs() * f32::sin(p_angle.radians + i as f32 * PI / 2.0),
-                })
-                .with(*p_angle)
-                .with(Velocity::new(150.0))
-                .with(Sprite {
-                  texture_idx: 2,
-                  region: Rect::new(0, 0, 8, 8),
-                  rotation: (p_angle.radians * 180.0 / PI) as f64,
-                  ..Default::default()
-                })
-                .build();
-            }
-          } else {
-            lazy
-              .create_entity(&entities)
-              .with(Projectile)
-              .with(Position {
-                x: p_pos.x + DISTANCE_MULTIPLIER * p_sprite.width() * f32::cos(p_angle.radians),
-                y: p_pos.y + DISTANCE_MULTIPLIER * p_sprite.height() * f32::sin(p_angle.radians),
-              })
-              .with(*p_angle)
-              .with(Velocity::new(150.0))
-              .with(Sprite {
-                texture_idx: 2,
-                region: Rect::new(0, 0, 8, 8),
-                rotation: (p_angle.radians * 180.0 / PI) as f64,
-                ..Default::default()
-              })
-              .build();
+        Keycode::Down => {
+          if boost.can_boost() {
+            movement_factor = 0.5;
+            boost.boost -= boost.dec_amount * time;
           }
         }
-        self.spawn_time_s.replace(0.25);
-      } else {
-        self.spawn_time_s.replace(timer);
-      }
-    }
-  }
-
-  fn setup(&mut self, world: &mut World) {
-    Self::SystemData::setup(world);
-    self.spawn_time_s = Some(0.25);
-  }
-}
-
-pub struct AmmunitionDeathSystem;
-
-impl<'a> System<'a> for AmmunitionDeathSystem {
-  #[allow(clippy::type_complexity)]
-  type SystemData = (
-    Entities<'a>,
-    Read<'a, LazyUpdate>,
-    Read<'a, Duration>,
-    Write<'a, GameEventsChannel>,
-    ReadStorage<'a, Ammunition>,
-    ReadStorage<'a, Player>,
-    ReadStorage<'a, Position>,
-    WriteStorage<'a, Sprite>,
-    WriteStorage<'a, Animation>,
-    WriteStorage<'a, AmmunitionRes>,
-  );
-
-  fn run(&mut self, data: Self::SystemData) {
-    let (
-      entities,
-      lazy,
-      time,
-      mut events,
-      ammunition,
-      players,
-      positions,
-      mut sprites,
-      mut animations,
-      mut ammunition_res,
-    ) = data;
-
-    for (_, e, sprite, animation) in (&ammunition, &entities, &mut sprites, &mut animations).join() {
-      animation.time += time.as_secs_f32();
-
-      if animation.time >= 0.15 {
-        entities.delete(e).unwrap();
-        continue;
-      }
-
-      if animation.time >= 0.1 {
-        *sprite = animation.frames[1];
-      }
-    }
-
-    for (_, p_pos, p_sprite, ammo) in (&players, &positions, &sprites, &mut ammunition_res).join() {
-      for (_, e, a_pos, a_sprite, ()) in (&ammunition, &entities, &positions, &sprites, !&animations).join() {
-        let dx = a_pos.x - p_pos.x;
-        let dy = a_pos.y - p_pos.y;
-        let distance = f32::sqrt(dx * dx + dy * dy);
-
-        if distance < (a_sprite.width() + p_sprite.width()) / 2.0 {
-          entities.delete(e).unwrap();
-          events.single_write(GameEvents::AmmunitionDeath(*a_pos));
-          ammo.ammunition = u8::min(ammo.ammunition + ammo.inc_amount, ammo.max_ammunition);
-          lazy
-            .create_entity(&entities)
-            .with(*a_pos)
-            .with(Ammunition)
-            .with(Sprite {
-              region: Rect::new(6, 0, 6, 6),
-              scale: 1.15,
-              ..*a_sprite
-            })
-            .with(Animation {
-              frames: vec![
-                Sprite {
-                  region: Rect::new(6, 0, 6, 6),
-                  scale: 1.15,
-                  ..*a_sprite
-                },
-                Sprite {
-                  region: Rect::new(12, 0, 6, 6),
-                  scale: 1.15,
-                  ..*a_sprite
-                },
-              ],
-              ..Default::default()
-            })
-            .build();
-        }
-      }
-    }
-  }
-}
-
-#[derive(Default)]
-pub struct ProjectileDeathSystem {
-  reader_id: Option<ReaderId<GameEvents>>,
-}
-
-impl<'a> System<'a> for ProjectileDeathSystem {
-  #[allow(clippy::type_complexity)]
-  type SystemData = (
-    Entities<'a>,
-    Write<'a, GameEventsChannel>,
-    Read<'a, LazyUpdate>,
-    Read<'a, Duration>,
-    WriteStorage<'a, Animation>,
-    WriteStorage<'a, Sprite>,
-    ReadStorage<'a, Projectile>,
-  );
-
-  fn run(&mut self, data: Self::SystemData) {
-    let (entities, events, lazy, time, mut animations, mut sprites, projectiles) = data;
-
-    for event in events.read(
-      self
-        .reader_id
-        .as_mut()
-        .expect("reader_id Should not be None! Did you forget to initialize in setup()?"),
-    ) {
-      if let GameEvents::ProjectileDeath(pos) = event {
-        let x = if pos.x < 0.0 {
-          pos.x + 1.5
-        } else if pos.x > SCREEN_WIDTH as f32 {
-          pos.x - 1.5
-        } else {
-          pos.x
-        };
-        let y = if pos.y < 0.0 {
-          pos.y + 1.5
-        } else if pos.y > SCREEN_HEIGHT as f32 {
-          pos.y - 1.5
-        } else {
-          pos.y
-        };
-        let rotation = if pos.x < 0.0 || pos.x > SCREEN_WIDTH as f32 {
-          90.0
-        } else {
-          0.0
-        };
-
-        lazy
-          .create_entity(&entities)
-          .with(Projectile)
-          .with(Position { x, y })
-          .with(Sprite {
-            texture_idx: 3,
-            region: Rect::new(0, 0, 6, 3),
-            rotation,
-            ..Default::default()
-          })
-          .with(Animation {
-            frames: vec![
-              Sprite {
-                texture_idx: 3,
-                region: Rect::new(0, 0, 6, 3),
-                rotation,
-                ..Default::default()
-              },
-              Sprite {
-                texture_idx: 3,
-                region: Rect::new(0, 3, 6, 3),
-                rotation,
-                ..Default::default()
-              },
-            ],
-            ..Default::default()
-          })
-          .build();
-      }
-    }
-    for (_, e, animation, sprite) in (&projectiles, &entities, &mut animations, &mut sprites).join() {
-      animation.time += time.as_secs_f32();
-
-      if animation.time >= 0.25 {
-        entities.delete(e).unwrap();
-        continue;
-      }
-
-      if animation.time >= 0.1 {
-        *sprite = animation.frames[1];
-      }
-    }
-  }
-
-  fn setup(&mut self, world: &mut World) {
-    Self::SystemData::setup(world);
-    self.reader_id = Some(Write::<GameEventsChannel>::fetch(world).register_reader());
-  }
-
-  fn dispose(self, _: &mut World)
-  where
-    Self: Sized,
-  {
-    drop(self.reader_id)
-  }
-}
-
-#[derive(Default)]
-pub struct LineParticleSystem {
-  reader_id: Option<ReaderId<GameEvents>>,
-  rng: Option<rand::rngs::SmallRng>,
-}
-
-impl<'a> System<'a> for LineParticleSystem {
-  #[allow(clippy::type_complexity)]
-  type SystemData = (
-    Entities<'a>,
-    Read<'a, LazyUpdate>,
-    Read<'a, Duration>,
-    Write<'a, GameEventsChannel>,
-    ReadStorage<'a, Angle>,
-    WriteStorage<'a, Velocity>,
-    WriteStorage<'a, LineParticle>,
-    WriteStorage<'a, Interpolation>,
-  );
-
-  fn run(&mut self, data: Self::SystemData) {
-    let (entities, lazy, time, events, angels, mut velocities, mut particles, mut interpolations) = data;
-
-    for (e, angle, velocity, particle, interpolation) in
-      (&entities, &angels, &mut velocities, &mut particles, &mut interpolations).join()
-    {
-      particle.time_to_live -= time.as_secs_f32();
-      if particle.time_to_live < 0.0 {
-        entities.delete(e).unwrap();
-        continue;
-      }
-
-      particle.x1 += velocity.x * f32::cos(angle.radians) * time.as_secs_f32();
-      particle.y1 += velocity.y * f32::sin(angle.radians) * time.as_secs_f32();
-      particle.x2 = particle.x1 + particle.length * f32::cos(angle.radians);
-      particle.y2 = particle.y1 + particle.length * f32::sin(angle.radians);
-
-      let (values, _) = interpolation.eval(time.as_secs_f32(), linear);
-      velocity.x = values[0];
-      velocity.y = values[0];
-      particle.length = values[1];
-      particle.width = values[2];
-    }
-
-    for event in events.read(
-      self
-        .reader_id
-        .as_mut()
-        .expect("reader_id Should not be None! Did you forget to initialize in setup()?"),
-    ) {
-      match event {
-        PlayerDeath(pos) => {
-          let rng = self
-            .rng
-            .as_mut()
-            .expect("rng Should not be None! Did you forget to initialize in setup()?");
-          for _ in 0..16 {
-            let length = rng.gen_range(2.0..8.0);
-            let time_to_live = rng.gen_range(0.3..0.5);
-            let velocity = rng.gen_range(75.0..150.0);
-            let radians = rng.gen_range(0.0..2.0 * PI);
-            let width = 3.0;
-            lazy
-              .create_entity(&entities)
-              .with(Angle { radians, velocity: 0.0 })
-              .with(Velocity::new(velocity))
-              .with(Interpolation::new(
-                // can't tween the width to 0 because its not allowed by gfx thickline
-                vec![(velocity, 0.0), (length, 0.0), (width, 1.0)],
-                time_to_live,
-              ))
-              .with(LineParticle {
-                width,
-                color: Color::WHITE,
-                length,
-                x1: pos.x,
-                y1: pos.y,
-                x2: pos.x + length * f32::cos(radians),
-                y2: pos.y + length * f32::sin(radians),
-                time_to_live,
-              })
-              .build();
-          }
-        }
-        GameEvents::AmmunitionDeath(pos) => {
-          let rng = self
-            .rng
-            .as_mut()
-            .expect("rng Should not be None! Did you forget to initialize in setup()?");
-          for _ in 0..rng.gen_range(3..7) {
-            let length = 5.0;
-            let time_to_live = rng.gen_range(0.2..0.4);
-            let velocity = rng.gen_range(75.0..150.0);
-            let radians = rng.gen_range(0.0..2.0 * PI);
-            let width = 3.0;
-            lazy
-              .create_entity(&entities)
-              .with(Angle { radians, velocity: 0.0 })
-              .with(Velocity::new(velocity))
-              .with(Interpolation::new(
-                // can't tween the width to 0 because its not allowed by gfx thickline
-                vec![(velocity, 0.0), (length, 0.0), (width, 1.0)],
-                time_to_live,
-              ))
-              .with(LineParticle {
-                width,
-                color: Color::from(RGB_COLOR_AMMUNITION),
-                length,
-                x1: pos.x,
-                y1: pos.y,
-                x2: pos.x + length * f32::cos(radians),
-                y2: pos.y + length * f32::sin(radians),
-                time_to_live,
-              })
-              .build();
-          }
+        Keycode::Left => rotation_factor += 1.0,
+        Keycode::Right => rotation_factor -= 1.0,
+        Keycode::S => {
+          event_writer.send(GameEvents::PlayerDeath);
+          commands.entity(entity).despawn();
         }
         _ => {}
       }
     }
+
+    if boost.is_empty() && boost.no_cooldown() {
+      boost.cooldown = boost.cooldown_sec;
+    } else if let Some(mut cooldown) = boost.cooldown.take() {
+      cooldown -= time;
+      if cooldown > 0.0 {
+        boost.cooldown.replace(cooldown);
+      }
+    }
+    boost.boost = boost.max_boost.min(boost.boost + boost.inc_amount * time);
+
+    transform.rotation *= glam::Quat::from_rotation_z(rotation_factor * player.rotation_speed * time);
+    let movement_direction = transform.rotation * glam::Vec3::Y;
+    let movement_distance = movement_factor * player.movement_speed * time;
+    let translation_delta = movement_direction * movement_distance;
+    transform.translation += translation_delta;
+
+    let mut options = StrokeOptions::default();
+    options.line_width = 1.5;
+    tessellator
+      .tessellate_circle(
+        Point::new(0.0, 0.0),
+        12.0,
+        &options,
+        &mut BuffersBuilder::new(
+          &mut circles.vertex_buffer,
+          WithTransformColor {
+            transform: transform.mat4(),
+            color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
+          },
+        ),
+      )
+      .unwrap();
+  }
+}
+
+pub fn trail_effect_spawn_system(
+  mut commands: Commands,
+  query: Query<(&Player, &Transform)>,
+  mut rng: ResMut<rand::rngs::SmallRng>,
+) {
+  for (_, transform) in query.iter() {
+    let radius = rng.gen_range(4.0..6.0);
+    let movement_direction = transform.rotation * glam::Vec3::Y;
+    let translation_delta = movement_direction * (12.0 + 2.0);
+    let translation = transform.translation - translation_delta + glam::vec3(0.0, 0.0, Z_INDEX_TRAIL_EFFECT);
+    let time_to_live = rng.gen_range(0.15..0.25);
+
+    commands
+      .spawn()
+      .insert(TrailEffect)
+      .insert(Interpolation::new(vec![(radius, 0.0)], time_to_live))
+      .insert(Transform {
+        translation,
+        ..*transform
+      });
+  }
+}
+
+pub fn trail_effect_system(
+  mut commands: Commands,
+  mut query: Query<(&TrailEffect, &mut Interpolation, &Transform, Entity)>,
+  boost: Query<&Boost>,
+  mut circles: ResMut<CircleGeometry>,
+  mut tessellator: ResMut<FillTessellator>,
+  keycodes: Res<HashSet<Keycode>>,
+  time: Res<Time>,
+) {
+  for (_, mut interpolation, transform, entity) in query.iter_mut() {
+    let (values, done) = interpolation.eval(time.as_secs_f32(), linear);
+    if done {
+      commands.entity(entity).despawn();
+      continue;
+    }
+
+    let mut color_rgba = ColorGl::from(RGB_COLOR_TRAIL);
+
+    if let Some(boost) = boost.get_single().ok() {
+      if boost.can_boost() {
+        for keycode in keycodes.iter() {
+          match keycode {
+            Keycode::Up => color_rgba = ColorGl::from(RGB_COLOR_BOOST),
+            Keycode::Down => color_rgba = ColorGl::from(RGB_COLOR_BOOST),
+            _ => {}
+          }
+        }
+      }
+    }
+
+    tessellator
+      .tessellate_circle(
+        Point::new(0.0, 0.0),
+        values[0],
+        &FillOptions::default(),
+        &mut BuffersBuilder::new(
+          &mut circles.vertex_buffer,
+          WithTransformColor {
+            transform: transform.mat4(),
+            color_rgba,
+          },
+        ),
+      )
+      .unwrap();
+  }
+}
+
+pub fn player_explosion_spawn_system(
+  mut commands: Commands,
+  mut event_reader: EventReader<GameEvents>,
+  query: Query<(&Player, &Transform)>,
+  mut rng: ResMut<rand::rngs::SmallRng>,
+) {
+  for event in event_reader.iter() {
+    match event {
+      GameEvents::PlayerDeath => {
+        for (_, transform) in query.iter() {
+          for _ in 0..rng.gen_range(8usize..12usize) {
+            let length = rng.gen_range(2.0..8.0);
+            let width = 3.0;
+            let time_to_live = rng.gen_range(0.3..0.5);
+            let movement_speed = rng.gen_range(75.0..150.0);
+            let z_angle = rng.gen_range(0.0..2.0 * std::f32::consts::PI);
+
+            commands
+              .spawn()
+              .insert(Transform {
+                rotation: glam::Quat::from_rotation_z(z_angle),
+                ..*transform
+              })
+              .insert(ExplosionEffect {
+                color: ColorGl::from(RGB_COLOR_PLAYER)
+              })
+              .insert(Interpolation::new(
+                vec![(movement_speed, 0.0), (length, 0.0), (width, 0.0)],
+                time_to_live,
+              ));
+          }
+        }
+      }
+    }
+  }
+}
+
+pub fn explosion_system(
+  mut commands: Commands,
+  mut query: Query<(&ExplosionEffect, &mut Transform, &mut Interpolation, Entity)>,
+  mut lines: ResMut<LineGeometry>,
+  mut tessellator: ResMut<StrokeTessellator>,
+  time: Res<Time>,
+) {
+  for (explosion, mut transform, mut interpolation, entity) in query.iter_mut() {
+    let (values, done) = interpolation.eval(time.as_secs_f32(), linear);
+    if done {
+      commands.entity(entity).despawn();
+      continue;
+    }
+
+    let movement_speed = values[0];
+    let length = values[1];
+    let width = values[2];
+    let movement_direction = transform.rotation * glam::Vec3::Y;
+    let movement_distance = movement_speed * time.as_secs_f32();
+    let translation_delta = movement_direction * movement_distance;
+    transform.translation += translation_delta;
+
+    let mut builder = Path::builder();
+    builder.begin(point(0.0, 0.0));
+    builder.line_to(point(0.0, length));
+    builder.close();
+
+    let mut options = StrokeOptions::default();
+    options.line_width = width;
+    tessellator
+      .tessellate_path(
+        &builder.build(),
+        &options,
+        &mut BuffersBuilder::new(
+          &mut lines.vertex_buffer,
+          WithTransformColor {
+            transform: transform.mat4(),
+            color_rgba: explosion.color,
+          },
+        ),
+      )
+      .unwrap();
+  }
+}
+
+pub fn camera_shake_system(
+  mut event_reader: EventReader<GameEvents>,
+  mut camera: ResMut<Camera>,
+  mut shake: ResMut<Shake>,
+  raw_time: Res<Duration>, // don't use Res<Time> here because I don't want to apply slow motion to camera shake
+) {
+  let Shake { is_shaking, .. } = *shake;
+
+  for event in event_reader.iter() {
+    match event {
+      GameEvents::PlayerDeath => shake.is_shaking = true,
+    }
   }
 
-  fn setup(&mut self, world: &mut World) {
-    Self::SystemData::setup(world);
-    self.reader_id = Some(Write::<GameEventsChannel>::fetch(world).register_reader());
-    self.rng = Some(rand::rngs::SmallRng::from_entropy());
+  if is_shaking {
+    shake.time += raw_time.as_secs_f32();
+    if shake.time > shake.duration {
+      shake.time = 0.0;
+      shake.is_shaking = false;
+      return;
+    }
+
+    let s = shake.time * shake.frequency;
+    let s0 = f32::floor(s);
+    let s1 = s0 + 1.0;
+    let k = if shake.time >= shake.duration {
+      0.0
+    } else {
+      (shake.duration - shake.time) / shake.duration
+    };
+
+    fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
+      move |n| {
+        let n = n as usize;
+        if n >= samples.len() {
+          0.0
+        } else {
+          samples[n]
+        }
+      }
+    }
+    let noise_x = noise(&shake.samples_x);
+    let noise_y = noise(&shake.samples_y);
+    let amplitude = |noise_fn: &dyn Fn(f32) -> f32| -> f32 {
+      (noise_fn(s0) + (s - s0) * (noise_fn(s1) - noise_fn(s0))) * k * shake.amplitude
+    };
+
+    camera.camera_pos = glam::Vec3::new(amplitude(&noise_x), amplitude(&noise_y), 0.0);
+  }
+}
+
+pub fn screen_flash_system(
+  mut event_reader: EventReader<GameEvents>,
+  mut flash: ResMut<Flash>,
+  mut quads: ResMut<QuadGeometry>,
+  mut tessellator: ResMut<FillTessellator>,
+) {
+  for event in event_reader.iter() {
+    match event {
+      GameEvents::PlayerDeath => flash.is_flashing = true,
+    }
   }
 
-  fn dispose(self, _: &mut World)
-  where
-    Self: Sized,
-  {
-    drop(self.reader_id);
+  if flash.is_flashing {
+    flash.frame_cnt -= 1;
+
+    if flash.frame_cnt > 0 {
+      tessellator
+        .tessellate_rectangle(
+          &Box2D::from_size(Size::new(SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32)),
+          &FillOptions::default(),
+          &mut BuffersBuilder::new(
+            &mut quads.vertex_buffer,
+            WithTransformColor {
+              transform: glam::Mat4::from_translation(glam::vec3(0.0, 0.0, 100.0)),
+              color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
+            },
+          ),
+        )
+        .unwrap();
+    } else {
+      *flash = Flash::default();
+    }
+  }
+}
+
+pub fn projectile_spawn_system(
+  query: Query<(&Player, &Transform)>,
+  mut commands: Commands,
+  time: Res<Time>,
+  mut timer: ResMut<EntitySpawnTimer>,
+  keycodes: Res<HashSet<Keycode>>,
+) {
+  for (player, transform) in query.iter() {
+    timer.projectile += **time;
+
+    if timer.projectile.as_secs_f32() >= 0.25 {
+      timer.projectile = Duration::default();
+
+      let movement_direction = transform.rotation * glam::Vec3::Y;
+      let translation_delta = movement_direction * 12.0;
+      let translation = transform.translation + translation_delta;
+
+      commands
+        .spawn()
+        .insert(Transform {
+          translation,
+          ..*transform
+        })
+        .insert(Projectile {
+          movement_speed: player.movement_speed * 2.0,
+        });
+
+      if keycodes.contains(&Keycode::Space) {
+        let movement_direction = transform.rotation * glam::vec3(1.0, 1.0, 0.0);
+        let translation_delta = movement_direction * 12.0;
+        let translation = transform.translation + translation_delta;
+
+        commands
+          .spawn()
+          .insert(Transform {
+            translation,
+            ..*transform
+          })
+          .insert(Projectile {
+            movement_speed: player.movement_speed * 2.0,
+          });
+
+        let movement_direction = transform.rotation * glam::vec3(-1.0, 1.0, 0.0);
+        let translation_delta = movement_direction * 12.0;
+        let translation = transform.translation + translation_delta;
+
+        commands
+          .spawn()
+          .insert(Transform {
+            translation,
+            ..*transform
+          })
+          .insert(Projectile {
+            movement_speed: player.movement_speed * 2.0,
+          });
+      }
+    }
+  }
+}
+
+pub fn projectile_system(
+  mut commands: Commands,
+  mut query: Query<(&Projectile, &mut Transform, Entity)>,
+  mut circles: ResMut<CircleGeometry>,
+  mut tessellator: ResMut<StrokeTessellator>,
+  time: Res<Time>,
+) {
+  for (projectile, mut transform, entity) in query.iter_mut() {
+    let pos = transform.translation.xy();
+    if pos.x < 0.0 || pos.x > SCREEN_WIDTH as f32 || pos.y < 0.0 || pos.y > SCREEN_HEIGHT as f32 {
+      commands.entity(entity).despawn();
+
+      let clamped_x = pos.x.max(0.0).min(SCREEN_WIDTH as f32 - DEAD_PROJECTILE_HEIGHT);
+      let clamped_y = pos.y.max(0.0).min(SCREEN_HEIGHT as f32 - DEAD_PROJECTILE_HEIGHT);
+      let translation = glam::vec3(clamped_x, clamped_y, 1.0);
+      let rotation = if pos.x < 0.0 || pos.x > SCREEN_WIDTH as f32 {
+        glam::Quat::from_rotation_z(-std::f32::consts::PI / 2.0)
+      } else {
+        glam::Quat::from_rotation_z(0.0)
+      };
+
+      commands
+        .spawn()
+        .insert(Transform {
+          translation,
+          rotation,
+          ..Default::default()
+        })
+        .insert(DeadProjectile {
+          timer: Duration::default(),
+        });
+    }
+
+    let movement_direction = transform.rotation * glam::Vec3::Y;
+    let movement_distance = projectile.movement_speed * time.as_secs_f32();
+    let translation_delta = movement_direction * movement_distance;
+    transform.translation += translation_delta;
+
+    tessellator
+      .tessellate_circle(
+        Point::new(0.0, 0.0),
+        2.5,
+        &StrokeOptions::default(),
+        &mut BuffersBuilder::new(
+          &mut circles.vertex_buffer,
+          WithTransformColor {
+            transform: transform.mat4(),
+            color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
+          },
+        ),
+      )
+      .unwrap();
+  }
+}
+
+pub fn projectile_death_system(
+  mut commands: Commands,
+  mut query: Query<(&mut DeadProjectile, &Transform, Entity)>,
+  mut quads: ResMut<QuadGeometry>,
+  mut tessellator: ResMut<FillTessellator>,
+  time: Res<Time>,
+) {
+  for (mut dead_projectile, transform, entity) in query.iter_mut() {
+    dead_projectile.timer += **time;
+
+    if dead_projectile.timer.as_secs_f32() >= 0.25 {
+      commands.entity(entity).despawn();
+      continue;
+    }
+
+    let color_rgba = if dead_projectile.timer.as_secs_f32() >= 0.1 {
+      ColorGl::from(RGB_COLOR_DEATH)
+    } else {
+      ColorGl::from(RGB_COLOR_PLAYER)
+    };
+    let transform = glam::Mat4::from_rotation_translation(transform.rotation, transform.translation);
+    tessellator
+      .tessellate_rectangle(
+        &Box2D::from_size(Size::new(DEAD_PROJECTILE_WIDTH, DEAD_PROJECTILE_HEIGHT)),
+        &FillOptions::default(),
+        &mut BuffersBuilder::new(&mut quads.vertex_buffer, WithTransformColor { transform, color_rgba }),
+      )
+      .unwrap();
+  }
+}
+
+pub fn timing_system(
+  mut event_reader: EventReader<GameEvents>,
+  raw_time: Res<Duration>, // this is set in main() with *world.resource_mut() = dt;
+  mut time: ResMut<Time>,
+) {
+  for event in event_reader.iter() {
+    match event {
+      GameEvents::PlayerDeath => time.slow_down_timer = Some(Duration::default()),
+    }
+  }
+
+  if let Some(mut timer) = time.slow_down_timer.take() {
+    timer += *raw_time;
+    if timer.as_secs_f32() <= SLOW_DOWN_DURATION_ON_DEATH {
+      let easing = ease_in_out_cubic(timer.as_secs_f32() / SLOW_DOWN_DURATION_ON_DEATH);
+      let slow_amount = (1.0 - easing) * 0.15 + easing * 1.0;
+      **time = Duration::from_secs_f32(raw_time.as_secs_f32() * slow_amount);
+      time.slow_down_timer.replace(timer);
+    }
+  } else {
+    **time = *raw_time;
+  }
+}
+
+pub fn tick_effect_spawn_system(
+  query: Query<&Player>,
+  mut commands: Commands,
+  time: Res<Time>,
+  mut timer: ResMut<EntitySpawnTimer>,
+) {
+  for _ in query.iter() {
+    timer.tick_effect += **time;
+
+    if timer.tick_effect.as_secs_f32() >= 5.0 {
+      timer.tick_effect = Duration::default();
+
+      commands
+        .spawn()
+        .insert(TickEffect)
+        .insert(Interpolation::new(vec![(32.0, 0.0)], 0.13));
+    }
+  }
+}
+
+pub fn tick_effect_system(
+  mut commands: Commands,
+  player_query: Query<(&Player, &Transform)>,
+  mut tick_effect_query: Query<(&TickEffect, &mut Interpolation, Entity)>,
+  mut quads: ResMut<QuadGeometry>,
+  mut tessellator: ResMut<FillTessellator>,
+  time: Res<Time>,
+) {
+  for (_, transform) in player_query.iter() {
+    for (_, mut interpolation, entity) in tick_effect_query.iter_mut() {
+      let (values, done) = interpolation.eval(time.as_secs_f32(), ease_in_out_cubic);
+      if done {
+        commands.entity(entity).despawn();
+        continue;
+      }
+
+      let mat4 = glam::Mat4::from_translation(transform.translation)
+        * glam::Mat4::from_translation(glam::vec3(48.0 / -2.0, 32.0 / 2.0 - values[0], Z_INDEX_PLAYER));
+      tessellator
+        .tessellate_rectangle(
+          &Box2D::from_size(Size::new(48.0, values[0])),
+          &FillOptions::default(),
+          &mut BuffersBuilder::new(
+            &mut quads.vertex_buffer,
+            WithTransformColor {
+              transform: mat4,
+              color_rgba: ColorGl::from(RGB_COLOR_PLAYER),
+            },
+          ),
+        )
+        .unwrap();
+    }
+  }
+}
+
+pub fn ammo_pickup_spawn_system(
+  mut commands: Commands,
+  time: Res<Time>,
+  mut timer: ResMut<EntitySpawnTimer>,
+  mut rng: ResMut<rand::rngs::SmallRng>,
+) {
+  timer.ammo_pickup += **time;
+
+  if timer.ammo_pickup.as_secs_f32() >= 1.0 {
+    timer.ammo_pickup = Duration::default();
+
+    let x = rng.gen_range(8.0..SCREEN_WIDTH as f32 - 8.0);
+    let y = rng.gen_range(8.0..SCREEN_HEIGHT as f32 - 8.0);
+    let rotation = glam::Quat::from_rotation_z(rng.gen_range(0.0..2.0 * std::f32::consts::PI));
+    let movement_speed = rng.gen_range(10.0..20.0);
+    let rotation_speed = std::f32::consts::PI;
+
+    commands
+      .spawn()
+      .insert(AmmoPickup {
+        movement_speed,
+        rotation_speed,
+        center_rotation_speed: rng.gen_range(-2.0 * std::f32::consts::PI..2.0 * std::f32::consts::PI),
+        timer: Duration::default(),
+      })
+      .insert(Transform {
+        translation: glam::vec3(x, y, Z_INDEX_AMMO_PICKUP),
+        rotation,
+        ..Default::default()
+      });
+  }
+}
+
+pub fn ammo_pickup_system(
+  mut commands: Commands,
+  player_query: Query<&Transform, With<Player>>,
+  mut query: Query<(&mut AmmoPickup, &mut Transform, Entity), Without<Player>>,
+  mut quads: ResMut<QuadGeometry>,
+  mut strokes: ResMut<StrokeTessellator>,
+  mut fills: ResMut<FillTessellator>,
+  time: Res<Time>,
+  mut rng: ResMut<rand::rngs::SmallRng>,
+) {
+  for (mut ammo, mut transform, entity) in query.iter_mut() {
+    let pos = transform.translation.xy();
+    if pos.x < -8.0 || pos.x > SCREEN_WIDTH as f32 + 8.0 || pos.y < -8.0 || pos.y > SCREEN_HEIGHT as f32 + 8.0 {
+      commands.entity(entity).despawn();
+      continue;
+    }
+
+    if ammo.timer.as_secs_f32() >= 0.15 {
+      commands.entity(entity).despawn();
+      continue;
+    }
+
+    if ammo.timer.as_secs_f32() > 0.0 {
+      ammo.timer += **time;
+      let mat4 =
+        transform.mat4_center() * glam::Mat4::from_translation(glam::vec3(9.5 / -2.0, 9.5 / -2.0, 1.0));
+
+      fills
+        .tessellate_rectangle(
+          &Box2D::from_size(Size::new(9.5, 9.5)),
+          &FillOptions::default(),
+          &mut BuffersBuilder::new(
+            &mut quads.vertex_buffer,
+            WithTransformColor {
+              transform: mat4,
+              color_rgba: ColorGl::from(RGB_COLOR_AMMO_PICKUP),
+            },
+          ),
+        )
+        .unwrap();
+      continue;
+    }
+
+    if let Some(player) = player_query.get_single().ok() {
+      let player_translation = player.translation.xy();
+      let ammo_forward = (transform.rotation * glam::Vec3::Y).xy();
+      let to_player = (player_translation - transform.translation.xy()).normalize();
+      let forward_dot_player = ammo_forward.dot(to_player);
+
+      if (forward_dot_player - 1.0).abs() < f32::EPSILON {
+        continue;
+      }
+
+      let ammo_right = (transform.rotation * glam::Vec3::X).xy();
+      let right_to_player = ammo_right.dot(to_player);
+      let rotation_sign = -f32::copysign(1.0, right_to_player);
+      let max_angle = forward_dot_player.clamp(-1.0, 1.0).acos();
+      let rotation_angle = rotation_sign * (ammo.rotation_speed * time.as_secs_f32()).min(max_angle);
+      transform.rotation *= glam::Quat::from_rotation_z(rotation_angle);
+
+      let distance = (transform.translation - player.translation).length();
+      if distance < 8.0 + 12.0 {
+        ammo.timer += **time;
+
+        for _ in 0..rng.gen_range(4usize..8usize) {
+          let length = 5.0;
+          let width = 3.0;
+          let time_to_live = rng.gen_range(0.2..0.4);
+          let movement_speed = rng.gen_range(75.0..150.0);
+          let z_angle = rng.gen_range(0.0..2.0 * std::f32::consts::PI);
+
+          commands
+            .spawn()
+            .insert(Transform {
+              rotation: glam::Quat::from_rotation_z(z_angle),
+              ..*transform
+            })
+            .insert(ExplosionEffect {
+              color: ColorGl::from(RGB_COLOR_AMMO_PICKUP)
+            })
+            .insert(Interpolation::new(
+              vec![(movement_speed, 0.0), (length, 0.0), (width, 0.0)],
+              time_to_live,
+            ));
+        }
+      }
+    }
+
+    transform.center_rotation *= glam::Quat::from_rotation_z(ammo.center_rotation_speed * time.as_secs_f32());
+    let movement_direction = transform.rotation * glam::Vec3::Y;
+    let movement_distance = ammo.movement_speed * time.as_secs_f32();
+    let translation_delta = movement_direction * movement_distance;
+    transform.translation += translation_delta;
+
+    let mat4 =
+      transform.mat4_center() * glam::Mat4::from_translation(glam::vec3(8.0 / -2.0, 8.0 / -2.0, 1.0));
+
+    strokes
+      .tessellate_rectangle(
+        &Box2D::from_size(Size::new(8.0, 8.0)),
+        &StrokeOptions::default(),
+        &mut BuffersBuilder::new(
+          &mut quads.vertex_buffer,
+          WithTransformColor {
+            transform: mat4,
+            color_rgba: ColorGl::from(RGB_COLOR_AMMO_PICKUP),
+          },
+        ),
+      )
+      .unwrap();
   }
 }

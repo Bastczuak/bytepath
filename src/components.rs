@@ -1,89 +1,53 @@
+use crate::color::ColorGl;
 use crate::easings::EasingFunction;
-use sdl2::{pixels::Color, rect::Rect};
-use specs::{prelude::*, Component};
+use bevy_ecs::prelude::*;
+use std::time::Duration;
 
-#[derive(Component, Default)]
-#[storage(NullStorage)]
-pub struct Player;
+#[derive(Component, Debug)]
+pub struct Player {
+  pub movement_speed: f32,
+  pub rotation_speed: f32,
+}
 
-#[derive(Component, Default)]
-#[storage(NullStorage)]
-pub struct ShootingEffect;
+#[derive(Component, Debug)]
+pub struct Projectile {
+  pub movement_speed: f32,
+}
 
-#[derive(Component, Default)]
-#[storage(NullStorage)]
+#[derive(Component, Debug)]
+pub struct DeadProjectile {
+  pub timer: Duration,
+}
+
+#[derive(Component)]
+pub struct ExplosionEffect {
+  pub color: ColorGl,
+}
+
+#[derive(Component)]
 pub struct TickEffect;
 
-#[derive(Component, Default)]
-#[storage(NullStorage)]
+#[derive(Component)]
 pub struct TrailEffect;
 
-#[derive(Component, Default)]
-#[storage(NullStorage)]
-pub struct Projectile;
-
-#[derive(Component, Default)]
-#[storage(NullStorage)]
-pub struct Ammunition;
-
-#[derive(Component, Default)]
-#[storage(NullStorage)]
-pub struct Boost;
-
-#[derive(Component, Default, Copy, Clone)]
-#[storage(DenseVecStorage)]
-pub struct Position {
-  pub x: f32,
-  pub y: f32,
+#[derive(Component, Debug, Default, Copy, Clone)]
+pub struct Transform {
+  pub rotation: glam::Quat,
+  pub translation: glam::Vec3,
+  pub center_rotation: glam::Quat,
 }
 
-#[derive(Component, Copy, Clone)]
-#[storage(DenseVecStorage)]
-pub struct Angle {
-  pub radians: f32,
-  pub velocity: f32,
-}
+impl Transform {
+  pub fn mat4(&self) -> glam::Mat4 {
+    glam::Mat4::from_rotation_translation(self.rotation, self.translation)
+  }
 
-impl Default for Angle {
-  fn default() -> Self {
-    Self {
-      radians: -std::f32::consts::PI / 2.0,
-      velocity: 1.66 * std::f32::consts::PI,
-    }
+  pub fn mat4_center(&self) -> glam::Mat4 {
+    glam::Mat4::from_rotation_translation(self.center_rotation, self.translation)
   }
 }
 
-#[derive(Component)]
-#[storage(DenseVecStorage)]
-pub struct Velocity {
-  pub base_x: f32,
-  pub base_y: f32,
-  pub x: f32,
-  pub y: f32,
-}
-
-impl Velocity {
-  pub fn new(value: f32) -> Self {
-    Self {
-      base_x: value,
-      base_y: value,
-      x: value,
-      y: value,
-    }
-  }
-
-  pub fn new_x(value: f32) -> Self {
-    Self {
-      base_x: value,
-      base_y: 0.0,
-      x: value,
-      y: 0.0,
-    }
-  }
-}
-
-#[derive(Component)]
-#[storage(DenseVecStorage)]
+#[derive(Component, Debug)]
 pub struct Interpolation {
   time: f32,
   duration: f32,
@@ -120,93 +84,17 @@ impl Interpolation {
   }
 }
 
-#[derive(Component, Copy, Clone)]
-#[storage(DenseVecStorage)]
-pub struct Sprite {
-  pub z_index: u8,
-  pub texture_idx: usize,
-  pub rotation: f64,
-  pub scale: f32,
-  pub region: Rect,
-}
-
-impl Sprite {
-  pub fn width(&self) -> f32 {
-    self.region.width() as f32
-  }
-
-  pub fn height(&self) -> f32 {
-    self.region.height() as f32
-  }
-
-  pub fn scaled_region_width(&self) -> u32 {
-    (self.region.width() as f32 * self.scale) as u32
-  }
-
-  pub fn scaled_region_height(&self) -> u32 {
-    (self.region.height() as f32 * self.scale) as u32
-  }
-}
-
-impl Default for Sprite {
-  fn default() -> Self {
-    Self {
-      texture_idx: 0,
-      region: Rect::new(0, 0, 0, 0),
-      rotation: 0.0,
-      scale: 1.0,
-      z_index: 1,
-    }
-  }
-}
-
-#[derive(Component)]
-#[storage(DenseVecStorage)]
-pub struct Animation {
-  pub time: f32,
-  pub frames: Vec<Sprite>,
-}
-
-impl Default for Animation {
-  fn default() -> Self {
-    Self {
-      time: 0.0,
-      frames: Vec::with_capacity(2),
-    }
-  }
-}
-
-#[derive(Component)]
-#[storage(DenseVecStorage)]
-pub struct LineParticle {
-  pub color: Color,
-  pub width: f32,
-  pub length: f32,
-  pub x1: f32,
-  pub y1: f32,
-  pub x2: f32,
-  pub y2: f32,
-  pub time_to_live: f32,
-}
-
-#[derive(Component)]
-#[storage(DenseVecStorage)]
-pub struct BoostRes {
-  /// default 100.0
+#[derive(Component, Debug)]
+pub struct Boost {
   pub max_boost: f32,
-  /// default 100.0
   pub boost: f32,
-  /// default None
   pub cooldown: Option<f32>,
-  /// default 10.0
   pub inc_amount: f32,
-  /// default 50.0
   pub dec_amount: f32,
-  /// default Some(2.0)
   pub cooldown_sec: Option<f32>,
 }
 
-impl BoostRes {
+impl Boost {
   pub fn is_empty(&self) -> bool {
     self.boost < 0.0
   }
@@ -220,7 +108,7 @@ impl BoostRes {
   }
 }
 
-impl Default for BoostRes {
+impl Default for Boost {
   fn default() -> Self {
     Self {
       max_boost: 100.0,
@@ -233,20 +121,10 @@ impl Default for BoostRes {
   }
 }
 
-#[derive(Component)]
-#[storage(DenseVecStorage)]
-pub struct AmmunitionRes {
-  pub max_ammunition: u8,
-  pub ammunition: u8,
-  pub inc_amount: u8,
-}
-
-impl Default for AmmunitionRes {
-  fn default() -> Self {
-    Self {
-      max_ammunition: 100,
-      ammunition: 0,
-      inc_amount: 5,
-    }
-  }
+#[derive(Component, Debug)]
+pub struct AmmoPickup {
+  pub movement_speed: f32,
+  pub rotation_speed: f32,
+  pub center_rotation_speed: f32,
+  pub timer: Duration,
 }
