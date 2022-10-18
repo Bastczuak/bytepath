@@ -14,6 +14,14 @@ use rand::Rng;
 use sdl2::keyboard::Keycode;
 use std::{collections::HashSet, time::Duration};
 
+fn screen_ouf_of_bounds_test(position: glam::Vec2, offset: Option<f32>) -> bool {
+  let offset = offset.unwrap_or_default();
+  position.x < -offset
+    || position.x > SCREEN_WIDTH as f32 + offset
+    || position.y < -offset
+    || position.y > SCREEN_HEIGHT as f32 + offset
+}
+
 pub fn player_spawn_system(mut commands: Commands) {
   commands
     .spawn()
@@ -434,7 +442,7 @@ pub fn projectile_system(
 ) {
   for (projectile, mut transform, entity) in query.iter_mut() {
     let pos = transform.translation.xy();
-    if pos.x < 0.0 || pos.x > SCREEN_WIDTH as f32 || pos.y < 0.0 || pos.y > SCREEN_HEIGHT as f32 {
+    if screen_ouf_of_bounds_test(pos, None) {
       commands.entity(entity).despawn();
 
       let clamped_x = pos.x.max(0.0).min(SCREEN_WIDTH as f32 - DEAD_PROJECTILE_HEIGHT);
@@ -626,7 +634,7 @@ pub fn ammo_pickup_system(
 ) {
   for (mut ammo, mut transform, entity) in query.iter_mut() {
     let pos = transform.translation.xy();
-    if pos.x < -8.0 || pos.x > SCREEN_WIDTH as f32 + 8.0 || pos.y < -8.0 || pos.y > SCREEN_HEIGHT as f32 + 8.0 {
+    if screen_ouf_of_bounds_test(pos, Some(8.0)) {
       commands.entity(entity).despawn();
       continue;
     }
