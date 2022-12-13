@@ -24,17 +24,17 @@ fn screen_ouf_of_bounds_test(position: glam::Vec2, offset: Option<f32>) -> bool 
 
 pub fn player_spawn_system(mut commands: Commands) {
   commands
-    .spawn()
-    .insert(Player {
-      movement_speed: 100.0,
-      rotation_speed: 360.0f32.to_radians(),
-    })
-    .insert(Transform {
-      translation: glam::Vec3::new(SCREEN_WIDTH as f32 / 2.0, SCREEN_HEIGHT as f32 / 2.0, Z_INDEX_PLAYER),
-      ..Default::default()
-    })
-    .insert(Boost::default())
-    .insert(Interpolation::new(vec![(8.0, 0.0)], 0.24));
+      .spawn()
+      .insert(Player {
+        movement_speed: 100.0,
+        rotation_speed: 360.0f32.to_radians(),
+      })
+      .insert(Transform {
+        translation: glam::Vec3::new(SCREEN_WIDTH as f32 / 2.0, SCREEN_HEIGHT as f32 / 2.0, Z_INDEX_PLAYER),
+        ..Default::default()
+      })
+      .insert(Boost::default())
+      .insert(Interpolation::new(vec![(8.0, 0.0)], 0.24, true));
 }
 
 pub fn shooting_system(
@@ -153,9 +153,9 @@ pub fn trail_effect_spawn_system(
     let time_to_live = rng.gen_range(0.15..0.25);
 
     commands
-      .spawn()
-      .insert(TrailEffect)
-      .insert(Interpolation::new(vec![(radius, 0.0)], time_to_live))
+        .spawn()
+        .insert(TrailEffect)
+        .insert(Interpolation::new(vec![(radius, 0.0)], time_to_live, true))
       .insert(Transform {
         translation,
         ..*transform
@@ -239,6 +239,7 @@ pub fn player_explosion_spawn_system(
               .insert(Interpolation::new(
                 vec![(movement_speed, 0.0), (length, 0.0), (width, 0.0)],
                 time_to_live,
+                false,
               ));
           }
         }
@@ -326,11 +327,7 @@ pub fn camera_shake_system(
     fn noise(samples: &[f32]) -> impl Fn(f32) -> f32 + '_ {
       move |n| {
         let n = n as usize;
-        if n >= samples.len() {
-          0.0
-        } else {
-          samples[n]
-        }
+        if n >= samples.len() { 0.0 } else { samples[n] }
       }
     }
     let noise_x = noise(&shake.samples_x);
@@ -552,9 +549,9 @@ pub fn tick_effect_spawn_system(query: Query<&Player>, mut commands: Commands, t
   for _ in query.iter() {
     if timer.tick_effect.finished {
       commands
-        .spawn()
-        .insert(TickEffect)
-        .insert(Interpolation::new(vec![(32.0, 0.0)], 0.13));
+          .spawn()
+          .insert(TickEffect)
+          .insert(Interpolation::new(vec![(32.0, 0.0)], 0.13, true));
     }
   }
 }
@@ -704,6 +701,7 @@ pub fn ammo_pickup_system(
             .insert(Interpolation::new(
               vec![(movement_speed, 0.0), (length, 0.0), (width, 0.0)],
               time_to_live,
+              false,
             ));
         }
       }
@@ -729,6 +727,163 @@ pub fn ammo_pickup_system(
           },
         ),
       )
-      .unwrap();
+        .unwrap();
+  }
+}
+
+pub fn boost_pickup_spawn_system(
+  mut commands: Commands,
+  timer: Res<EntitySpawnTimer>,
+  mut rng: ResMut<rand::rngs::SmallRng>,
+) {
+  if timer.boost_pickup.finished {
+    let movement_direction = if rng.gen_bool(1.0 / 2.0) { -1.0 } else { 1.0 };
+    let x = if movement_direction > 0.0 {
+      -12.0
+    } else {
+      SCREEN_WIDTH as f32 + 12.0
+    };
+    let y = rng.gen_range(12.0..SCREEN_HEIGHT as f32 - 12.0);
+    let movement_speed = rng.gen_range(20.0..40.0);
+
+    commands
+        .spawn()
+        .insert(BoostPickup {
+          movement_direction,
+          movement_speed,
+          center_rotation_speed: rng.gen_range(-2.0 * std::f32::consts::PI..2.0 * std::f32::consts::PI),
+          visible: true,
+          timer: Timer::from_seconds(0.05, true),
+        })
+        .insert(Transform {
+          translation: glam::vec3(x, y, Z_INDEX_BOOST_PICKUP),
+          ..Default::default()
+        });
+  }
+}
+
+pub fn boost_pickup_system(
+  mut commands: Commands,
+  player_query: Query<&Transform, With<Player>>,
+  mut set: ParamSet<(
+    Query<(&BoostPickup, &mut Transform, Entity), (Without<Player>, Without<Interpolation>)>,
+    Query<(&mut BoostPickup, &Transform, &mut Interpolation, Entity), Without<Player>>,
+  )>,
+  mut quads: ResMut<QuadGeometry>,
+  mut strokes: ResMut<StrokeTessellator>,
+  mut fills: ResMut<FillTessellator>,
+  time: Res<Time>,
+) {
+  for (mut boost, transform, mut interpolation, entity) in set.p1().iter_mut() {
+    boost.timer.tick(**time);
+    let time = time.as_secs_f32();
+    let (values, done) = interpolation.eval(time, ease_in_out_cubic);
+    let color = if boost.timer.count > 3 {
+      RGB_COLOR_BOOST
+    } else {
+      RGB_COLOR_PLAYER
+    };
+
+    if boost.timer.count == 10 {
+      commands.entity(entity).despawn();
+      continue;
+    }
+
+    if boost.timer.finished && boost.timer.count > 3 {
+      boost.visible = !boost.visible;
+    }
+
+    if !boost.visible {
+      continue;
+    }
+
+    let size = 12.0;
+    let mat4 = transform.mat4_center() * glam::Mat4::from_translation(glam::vec3(size / -2.0, size / -2.0, 1.0));
+    fills
+        .tessellate_rectangle(
+          &Box2D::from_size(Size::new(size, size)),
+          &FillOptions::default(),
+          &mut BuffersBuilder::new(
+            &mut quads.vertex_buffer,
+            WithTransformColor {
+              transform: mat4,
+              color_rgba: ColorGl::from(color),
+            },
+          ),
+        )
+        .unwrap();
+
+    let size = if done { 12.0 * 1.5 * 2.0 } else { 12.0 * 1.5 * values[0] };
+    let mat4 = transform.mat4_center() * glam::Mat4::from_translation(glam::vec3(size / -2.0, size / -2.0, 1.0));
+    strokes
+        .tessellate_rectangle(
+          &Box2D::from_size(Size::new(size, size)),
+          &StrokeOptions::default(),
+          &mut BuffersBuilder::new(
+            &mut quads.vertex_buffer,
+            WithTransformColor {
+              transform: mat4,
+              color_rgba: ColorGl::from(color),
+            },
+          ),
+        )
+        .unwrap();
+  }
+
+  let time = time.as_secs_f32();
+
+  for (boost, mut transform, entity) in set.p0().iter_mut() {
+    if screen_ouf_of_bounds_test(transform.translation.xy(), Some(12.0 * 1.5)) {
+      commands.entity(entity).despawn();
+      continue;
+    }
+
+    if let Ok(player) = player_query.get_single() {
+      let distance = (transform.translation - player.translation).length();
+      if distance < 12.0 * 0.5 + 12.0 {
+        commands
+            .entity(entity)
+            .insert(Interpolation::new(vec![(1.0, 2.0)], 0.3, false));
+        continue;
+      }
+    }
+
+    transform.center_rotation *= glam::Quat::from_rotation_z(boost.center_rotation_speed * time);
+    let movement_direction = glam::Vec3::X * boost.movement_direction;
+    let movement_distance = boost.movement_speed * time;
+    let translation_delta = movement_direction * movement_distance;
+    transform.translation += translation_delta;
+
+    let size = 12.0 * 0.5;
+    let mat4 = transform.mat4_center() * glam::Mat4::from_translation(glam::vec3(size / -2.0, size / -2.0, 1.0));
+    fills
+        .tessellate_rectangle(
+          &Box2D::from_size(Size::new(size, size)),
+          &FillOptions::default(),
+          &mut BuffersBuilder::new(
+            &mut quads.vertex_buffer,
+            WithTransformColor {
+              transform: mat4,
+              color_rgba: ColorGl::from(RGB_COLOR_BOOST),
+            },
+          ),
+        )
+        .unwrap();
+
+    let size = 12.0 * 1.5;
+    let mat4 = transform.mat4_center() * glam::Mat4::from_translation(glam::vec3(size / -2.0, size / -2.0, 1.0));
+    strokes
+        .tessellate_rectangle(
+          &Box2D::from_size(Size::new(size, size)),
+          &StrokeOptions::default(),
+          &mut BuffersBuilder::new(
+            &mut quads.vertex_buffer,
+            WithTransformColor {
+              transform: mat4,
+              color_rgba: ColorGl::from(RGB_COLOR_BOOST),
+            },
+          ),
+        )
+        .unwrap();
   }
 }

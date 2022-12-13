@@ -115,7 +115,7 @@ pub struct Gl {
 impl Gl {
   pub fn load_with<F>(load_fn: F) -> Self
     where
-      F: FnMut(&'static str) -> *const GLvoid,
+        F: FnMut(&'static str) -> *const GLvoid,
   {
     Self {
       inner: std::rc::Rc::new(gl::Gl::load_with(load_fn)),

@@ -119,6 +119,7 @@ pub struct EntitySpawnTimer {
   pub projectile: Timer,
   pub tick_effect: Timer,
   pub ammo_pickup: Timer,
+  pub boost_pickup: Timer,
 }
 
 impl Default for EntitySpawnTimer {
@@ -127,13 +128,19 @@ impl Default for EntitySpawnTimer {
       projectile: Timer::from_seconds(0.25, true),
       tick_effect: Timer::from_seconds(5.0, true),
       ammo_pickup: Timer::from_seconds(1.0, true),
+      boost_pickup: Timer::from_seconds(2.0, true),
     }
   }
 }
 
 impl EntitySpawnTimer {
-  pub fn as_array(&mut self) -> [&mut Timer; 3] {
-    [&mut self.projectile, &mut self.tick_effect, &mut self.ammo_pickup]
+  pub fn as_array(&mut self) -> [&mut Timer; 4] {
+    [
+      &mut self.projectile,
+      &mut self.tick_effect,
+      &mut self.ammo_pickup,
+      &mut self.boost_pickup,
+    ]
   }
 }
 
@@ -161,6 +168,7 @@ impl DerefMut for Time {
 pub struct Timer {
   pub elapsed: f32,
   pub duration: f32,
+  pub count: u8,
   pub finished: bool,
   pub repeating: bool,
 }
@@ -183,6 +191,7 @@ impl Timer {
 
     if self.elapsed >= self.duration {
       self.finished = true;
+      self.count += 1;
     }
   }
 

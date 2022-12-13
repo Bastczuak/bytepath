@@ -12,6 +12,7 @@ pub const RGB_COLOR_AMMO_PICKUP: RawColor = (123, 200, 164);
 pub const RGB_COLOR_DEATH: RawColor = (241, 103, 69);
 pub const Z_INDEX_PLAYER: f32 = 10.0;
 pub const Z_INDEX_AMMO_PICKUP: f32 = Z_INDEX_PLAYER - 1.0;
+pub const Z_INDEX_BOOST_PICKUP: f32 = Z_INDEX_PLAYER - 2.0;
 pub const Z_INDEX_TRAIL_EFFECT: f32 = Z_INDEX_PLAYER + 1.0;
 pub const SLOW_DOWN_DURATION_ON_DEATH: f32 = 2.5;
 pub const DEAD_PROJECTILE_WIDTH: f32 = 6.0;

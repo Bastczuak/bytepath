@@ -1,7 +1,5 @@
-use crate::color::ColorGl;
-use crate::easings::EasingFunction;
+use crate::{color::ColorGl, easings::EasingFunction, Timer};
 use bevy_ecs::prelude::*;
-use crate::Timer;
 
 #[derive(Component, Debug)]
 pub struct Player {
@@ -52,14 +50,16 @@ pub struct Interpolation {
   time: f32,
   duration: f32,
   begin_end: Vec<(f32, f32)>,
+  repeating: bool,
 }
 
 impl Interpolation {
-  pub fn new(begin_end: Vec<(f32, f32)>, duration: f32) -> Self {
+  pub fn new(begin_end: Vec<(f32, f32)>, duration: f32, repeating: bool) -> Self {
     Interpolation {
       time: 0.0,
       duration,
       begin_end,
+      repeating,
     }
   }
 
@@ -67,8 +67,10 @@ impl Interpolation {
     self.time += t;
     let mut finished = false;
     if self.time >= self.duration {
-      self.time = 0.0;
-      finished = true
+      if self.repeating {
+        self.time = 0.0;
+      }
+      finished = true;
     }
     (
       self
@@ -127,4 +129,13 @@ pub struct AmmoPickup {
   pub rotation_speed: f32,
   pub center_rotation_speed: f32,
   pub timer: Timer,
+}
+
+#[derive(Component, Debug)]
+pub struct BoostPickup {
+  pub movement_speed: f32,
+  pub movement_direction: f32,
+  pub center_rotation_speed: f32,
+  pub timer: Timer,
+  pub visible: bool,
 }
