@@ -7,10 +7,11 @@ use crate::{
   color::ColorGl,
   environment::{SCREEN_HEIGHT, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH, SCREEN_WIDTH},
   render::gl::types::*,
-  resources::{DrawBuffers, LineGeometry, QuadGeometry},
+  resources::{Character, DrawBuffers, LineGeometry, QuadGeometry, TextBuffers},
   Camera, CircleGeometry, RGB_CLEAR_COLOR,
 };
 use bevy_ecs::system::{Res, ResMut};
+use freetype as ft;
 use lyon::{
   lyon_tessellation::{FillOptions, FillTessellator, FillVertex, FillVertexConstructor},
   math::{point, Point},
@@ -29,6 +30,11 @@ macro_rules! get_offset {
     let field_ptr = core::ptr::addr_of!((*dummy_ptr).$field);
     field_ptr as usize - dummy_ptr as usize
   }};
+}
+macro_rules! cstr {
+  ($literal:expr) => {
+    (std::ffi::CStr::from_bytes_with_nul_unchecked(concat!($literal, "\0").as_bytes()))
+  };
 }
 
 const FBO_VERTEX_SHADER: &str = r#"
@@ -96,6 +102,44 @@ void main() {
 }
 "#;
 
+const TEXT_VERTEX_SHADER: &str = r#"
+#version 330 core
+
+layout (location = 0) in vec4 PosTex;
+layout (location = 1) in vec4 Color;
+
+uniform mat4 uProjection;
+
+out VERTEX_SHADER_OUTPUT {
+  vec2 TexCoords;
+  vec4 Color;
+} OUT;
+
+void main() {
+  gl_Position = uProjection * vec4(PosTex.xy, 0.0, 1.0);
+  OUT.TexCoords = PosTex.zw;
+  OUT.Color = Color;
+}
+"#;
+
+const TEXT_FRAGMENT_SHADER: &str = r#"
+#version 330 core
+
+in VERTEX_SHADER_OUTPUT {
+  vec2 TexCoords;
+  vec4 Color;
+} IN;
+
+out vec4 Color;
+
+uniform sampler2D uTexture;
+
+void main() {
+  vec4 sampled = vec4(1.0, 1.0, 1.0, texture(uTexture, IN.TexCoords).r);
+  Color = IN.Color * sampled;
+}
+"#;
+
 #[rustfmt::skip]
 const LOW_RES_QUAD_VERTICES: [f32; 24] = [
   -1.0, 1.0, 0.0,
@@ -143,6 +187,7 @@ pub struct OpenglCtx {
   clear_color: ColorGl,
   frame_buffer: LowResFrameBuffer,
   scene_program: GLuint,
+  text_program: GLuint,
   pub viewport: (GLsizei, GLsizei),
 }
 
@@ -155,6 +200,13 @@ pub struct MyVertex {
   transform_mat4_4: [f32; 4],
   color_rgba: [f32; 4],
   position: [f32; 2],
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct MyTextVertex {
+  pub pos_tex: [f32; 4],
+  pub color_rgba: [f32; 4],
 }
 
 pub struct WithTransformColor {
@@ -317,8 +369,7 @@ pub fn create_draw_buffer<T>(
       gl::DYNAMIC_DRAW,
     );
 
-    let transform_attr =
-      gl.GetAttribLocation(opengl_ctx.scene_program, CString::new("Transform").unwrap().into_raw()) as GLuint;
+    let transform_attr = gl.GetAttribLocation(opengl_ctx.scene_program, cstr!("Transform").as_ptr()) as GLuint;
     gl.EnableVertexAttribArray(transform_attr);
     gl.VertexAttribPointer(
       transform_attr,
@@ -355,7 +406,7 @@ pub fn create_draw_buffer<T>(
       (std::mem::size_of::<MyVertex>()) as i32,
       get_offset!(MyVertex, transform_mat4_4) as *const GLvoid,
     );
-    let color_attr = gl.GetAttribLocation(opengl_ctx.scene_program, CString::new("Color").unwrap().into_raw());
+    let color_attr = gl.GetAttribLocation(opengl_ctx.scene_program, cstr!("Color").as_ptr());
     gl.EnableVertexAttribArray(color_attr as u32);
     gl.VertexAttribPointer(
       color_attr as u32,
@@ -366,7 +417,7 @@ pub fn create_draw_buffer<T>(
       get_offset!(MyVertex, color_rgba) as *const GLvoid,
     );
 
-    let pos_attr = gl.GetAttribLocation(opengl_ctx.scene_program, CString::new("Position").unwrap().into_raw());
+    let pos_attr = gl.GetAttribLocation(opengl_ctx.scene_program, cstr!("Position").as_ptr());
     gl.EnableVertexAttribArray(pos_attr as u32);
     gl.VertexAttribPointer(
       pos_attr as u32,
@@ -381,9 +432,136 @@ pub fn create_draw_buffer<T>(
   }
 }
 
+pub fn create_text_buffer(gl: &Gl, opengl_ctx: &OpenglCtx) -> TextBuffers {
+  let path = std::path::Path::new("m5x7.ttf");
+  let library = ft::Library::init().unwrap();
+  let face = library.new_face(path, 0).unwrap();
+  face.set_pixel_sizes(0, 48).unwrap();
+
+  let (atlas_texture, characters) = unsafe {
+    let (mut w, mut h) = (0, 0);
+    for c in 32..127 {
+      if face.load_char(c, ft::face::LoadFlag::RENDER).is_ok() {
+        w += face.glyph().bitmap().width();
+        h = h.max(face.glyph().bitmap().rows());
+      } else {
+        eprintln!("could not load character {}", c as u8 as char);
+      }
+    }
+
+    let mut texture = 0;
+    gl.GenTextures(1, &mut texture);
+    gl.BindTexture(gl::TEXTURE_2D, texture);
+    gl.TexImage2D(
+      gl::TEXTURE_2D,
+      0,
+      gl::RED as i32,
+      w,
+      h,
+      0,
+      gl::RED,
+      gl::UNSIGNED_BYTE,
+      std::ptr::null(),
+    );
+    gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
+    gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
+    gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+    gl.TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+
+    let mut x = 0;
+    let mut characters = std::collections::HashMap::<char, Character>::new();
+    gl.PixelStorei(gl::UNPACK_ALIGNMENT, 1);
+
+    for c in 32..127 {
+      if face.load_char(c, ft::face::LoadFlag::RENDER).is_ok() {
+        gl.TexSubImage2D(
+          gl::TEXTURE_2D,
+          0,
+          x,
+          0,
+          face.glyph().bitmap().width(),
+          face.glyph().bitmap().rows(),
+          gl::RED,
+          gl::UNSIGNED_BYTE,
+          face.glyph().bitmap().buffer().as_ptr() as *const GLvoid,
+        );
+
+        let character = Character {
+          tx: x as f32 / w as f32,
+          tx_1: (x as f32 + face.glyph().bitmap().width() as f32) / w as f32,
+          ty: face.glyph().bitmap().rows() as f32 / h as f32,
+          width: face.glyph().bitmap().width() as f32,
+          height: face.glyph().bitmap().rows() as f32,
+          bearing: glam::vec2(face.glyph().bitmap_left() as f32, face.glyph().bitmap_top() as f32),
+          advance: (face.glyph().advance().x >> 6) as f32,
+        };
+        characters.insert(c as u8 as char, character);
+
+        x += face.glyph().bitmap().width();
+      } else {
+        eprintln!("could not load character {}", c as u8 as char);
+      }
+    }
+
+    gl.BindTexture(gl::TEXTURE_2D, 0);
+
+    (texture, characters)
+  };
+
+  let (vao, vbo) = unsafe {
+    let (mut vao, mut vbo) = (0, 0);
+    gl.GenVertexArrays(1, &mut vao);
+    gl.GenBuffers(1, &mut vbo);
+    gl.BindVertexArray(vao);
+    gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
+    gl.BufferData(
+      gl::ARRAY_BUFFER,
+      (6 * std::mem::size_of::<MyVertex>()) as GLsizeiptr,
+      std::ptr::null(),
+      gl::DYNAMIC_DRAW,
+    );
+
+    let pos_tex_attr = gl.GetAttribLocation(opengl_ctx.text_program, cstr!("PosTex").as_ptr());
+    gl.EnableVertexAttribArray(pos_tex_attr as u32);
+    gl.VertexAttribPointer(
+      pos_tex_attr as u32,
+      4,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyTextVertex>()) as i32,
+      get_offset!(MyTextVertex, pos_tex) as *const GLvoid,
+    );
+
+    let color_attr = gl.GetAttribLocation(opengl_ctx.text_program, cstr!("Color").as_ptr());
+    gl.EnableVertexAttribArray(color_attr as u32);
+    gl.VertexAttribPointer(
+      color_attr as u32,
+      4,
+      gl::FLOAT,
+      gl::FALSE,
+      (std::mem::size_of::<MyTextVertex>()) as i32,
+      get_offset!(MyTextVertex, color_rgba) as *const GLvoid,
+    );
+
+    gl.BindBuffer(gl::ARRAY_BUFFER, 0);
+    gl.BindVertexArray(0);
+
+    (vao, vbo)
+  };
+
+  TextBuffers {
+    vao,
+    vbo,
+    atlas_texture,
+    characters,
+    vertex_buffer: Vec::new(),
+  }
+}
+
 pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
   let low_res_prg = create_shader_program(gl, FBO_VERTEX_SHADER, FBO_FRAGMENT_SHADER)?;
   let scene_prg = create_shader_program(gl, SCENE_VERTEX_SHADER, SCENE_FRAGMENT_SHADER)?;
+  let text_prg = create_shader_program(gl, TEXT_VERTEX_SHADER, TEXT_FRAGMENT_SHADER)?;
   let (fbo_vao, fbo_vbo, fbo, fbo_texture) = unsafe {
     let (mut vao, mut vbo) = (0, 0);
     gl.GenVertexArrays(1, &mut vao);
@@ -397,7 +575,7 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
       gl::STATIC_DRAW,
     );
 
-    let pos_attr = gl.GetAttribLocation(low_res_prg, CString::new("Position").unwrap().into_raw());
+    let pos_attr = gl.GetAttribLocation(low_res_prg, cstr!("Position").as_ptr());
     gl.EnableVertexAttribArray(pos_attr as u32);
     gl.VertexAttribPointer(
       pos_attr as u32,
@@ -408,7 +586,7 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
       std::ptr::null(),
     );
 
-    let texture_coords_attr = gl.GetAttribLocation(low_res_prg, CString::new("TexCoords").unwrap().into_raw());
+    let texture_coords_attr = gl.GetAttribLocation(low_res_prg, cstr!("TexCoords").as_ptr());
     gl.EnableVertexAttribArray(texture_coords_attr as u32);
     gl.VertexAttribPointer(
       texture_coords_attr as u32,
@@ -420,10 +598,7 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
     );
 
     gl.UseProgram(low_res_prg);
-    gl.Uniform1i(
-      gl.GetUniformLocation(low_res_prg, CString::new("uTexture").unwrap().into_raw()),
-      0,
-    );
+    gl.Uniform1i(gl.GetUniformLocation(low_res_prg, cstr!("uTexture").as_ptr()), 0);
 
     let mut fbo = 0;
     gl.GenFramebuffers(1, &mut fbo);
@@ -470,6 +645,7 @@ pub fn init(gl: &Gl) -> Result<OpenglCtx, String> {
       shader_program: low_res_prg,
     },
     scene_program: scene_prg,
+    text_program: text_prg,
     viewport: (SCREEN_RENDER_WIDTH as GLsizei, SCREEN_RENDER_HEIGHT as GLsizei),
   })
 }
@@ -479,14 +655,16 @@ pub type RenderSystemState<'w, 's> = (
   ResMut<'w, CircleGeometry>,
   ResMut<'w, QuadGeometry>,
   ResMut<'w, LineGeometry>,
+  ResMut<'w, TextBuffers>,
 );
 
 pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemState) -> Result<(), String> {
-  let (camera, mut circles, mut quads, mut lines) = render_state;
+  let (camera, mut circles, mut quads, mut lines, mut texts) = render_state;
   let OpenglCtx {
     clear_color,
     frame_buffer,
     scene_program,
+    text_program,
     viewport: (w, h),
   } = opengl_ctx;
 
@@ -541,7 +719,7 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
       projection * view * model
     };
     gl.UniformMatrix4fv(
-      gl.GetUniformLocation(*scene_program, CString::new("uMVP").unwrap().into_raw()),
+      gl.GetUniformLocation(*scene_program, cstr!("uMVP").as_ptr()),
       1,
       gl::FALSE,
       mvp_mat.to_cols_array().as_ptr(),
@@ -561,27 +739,63 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
     gl.ActiveTexture(gl::TEXTURE0);
     gl.BindTexture(gl::TEXTURE_2D, frame_buffer.texture2d);
     gl.DrawArrays(gl::TRIANGLES, 0, 6);
+
+    //----------------------TEXT----------------------//
+    gl.Enable(gl::BLEND);
+    gl.BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+    gl.UseProgram(*text_program);
+    gl.ActiveTexture(gl::TEXTURE0);
+    gl.BindTexture(gl::TEXTURE_2D, texts.atlas_texture);
+
+    let projection = glam::Mat4::orthographic_rh_gl(0.0, *w as f32, 0.0, *h as f32, -10.0, 10.0);
+    gl.UniformMatrix4fv(
+      gl.GetUniformLocation(*text_program, cstr!("uProjection").as_ptr()),
+      1,
+      gl::FALSE,
+      projection.to_cols_array().as_ptr(),
+    );
+
+    gl.BindVertexArray(texts.vao);
+    gl.BindBuffer(gl::ARRAY_BUFFER, texts.vbo);
+    gl.BufferData(
+      gl::ARRAY_BUFFER,
+      (texts.vertex_buffer.len() * std::mem::size_of::<MyTextVertex>()) as GLsizeiptr,
+      texts.vertex_buffer.as_ptr() as *const GLvoid,
+      gl::DYNAMIC_DRAW,
+    );
+    gl.BindBuffer(gl::ARRAY_BUFFER, 0);
+    gl.DrawArrays(gl::TRIANGLES, 0, texts.vertex_buffer.len() as i32);
+
+    gl.BindVertexArray(0);
+    gl.BindTexture(gl::TEXTURE_2D, 0);
+    gl.Disable(gl::BLEND);
+    texts.vertex_buffer.clear();
+    //----------------------TEXT----------------------//
   }
   Ok(())
 }
 
 pub fn delete(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemState) {
-  let (_, circles, quads, lines) = render_state;
+  let (_, circles, quads, lines, texts) = render_state;
   unsafe {
     gl.DeleteVertexArrays(1, &opengl_ctx.frame_buffer.vao);
     gl.DeleteVertexArrays(1, &circles.vao);
     gl.DeleteVertexArrays(1, &quads.vao);
     gl.DeleteVertexArrays(1, &lines.vao);
+    gl.DeleteVertexArrays(1, &texts.vao);
     gl.DeleteBuffers(1, &opengl_ctx.frame_buffer.vbo);
     gl.DeleteBuffers(1, &opengl_ctx.frame_buffer.texture2d);
     gl.DeleteBuffers(1, &circles.vbo);
     gl.DeleteBuffers(1, &quads.vbo);
     gl.DeleteBuffers(1, &lines.vbo);
+    gl.DeleteBuffers(1, &texts.vbo);
     gl.DeleteBuffers(1, &circles.ebo);
     gl.DeleteBuffers(1, &quads.ebo);
     gl.DeleteBuffers(1, &lines.ebo);
+    gl.DeleteBuffers(1, &texts.atlas_texture);
     gl.DeleteProgram(opengl_ctx.frame_buffer.shader_program);
     gl.DeleteProgram(opengl_ctx.scene_program);
+    gl.DeleteProgram(opengl_ctx.text_program);
     gl.DeleteFramebuffers(1, &opengl_ctx.frame_buffer.fbo);
   }
 }

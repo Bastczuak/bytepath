@@ -28,6 +28,7 @@ use std::{
   time::{Duration, Instant},
 };
 use systems::shooting_system;
+use crate::render::create_text_buffer;
 
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;
@@ -67,6 +68,7 @@ fn main() -> Result<(), String> {
   ));
   world.insert_resource(create_draw_buffer::<Quad>(&gl, &opengl_ctx, calculate_size_for_quads));
   world.insert_resource(create_draw_buffer::<Line>(&gl, &opengl_ctx, calculate_size_for_lines));
+  world.insert_resource(create_text_buffer(&gl, &opengl_ctx));
 
   let mut render_state = SystemState::<render::RenderSystemState>::new(&mut world);
 
@@ -103,6 +105,7 @@ fn main() -> Result<(), String> {
     stage.add_system(ammo_pickup_spawn_system);
     stage.add_system(explosion_system);
     stage.add_system(boost_pickup_spawn_system);
+    stage.add_system(draw_text_system);
 
     stage
   });

@@ -1,4 +1,4 @@
-use crate::render::{gl::types::*, MyVertex};
+use crate::render::{gl::types::*, MyTextVertex, MyVertex};
 use bevy_ecs::prelude::Resource;
 use lyon::tessellation::{FillTessellator, StrokeTessellator, VertexBuffers};
 use rand::rngs::SmallRng;
@@ -9,6 +9,7 @@ use std::{
   ops::{Deref, DerefMut},
   time::Duration,
 };
+use std::collections::HashMap;
 
 #[derive(Debug, Resource)]
 pub struct Camera {
@@ -102,6 +103,58 @@ impl<T> DrawBuffers<T> {
       ebo,
       vertex_buffer: VertexBuffers::new(),
       _marker: PhantomData::<T>::default(),
+    }
+  }
+}
+
+pub struct Character {
+  pub tx: f32,
+  pub tx_1: f32,
+  pub ty: f32,
+  pub width: f32,
+  pub height: f32,
+  pub bearing: glam::Vec2,
+  pub advance: f32,
+}
+
+#[derive(Resource)]
+pub struct TextBuffers {
+  pub vao: GLuint,
+  pub vbo: GLuint,
+  pub atlas_texture: GLuint,
+  pub characters: HashMap<char, Character>,
+  pub vertex_buffer: Vec<MyTextVertex>,
+}
+
+impl TextBuffers {
+  pub fn build_text(&mut self, text: &str, mut x: f32, y: f32, scale: f32, color: glam::Vec3) {
+    for c in text.chars() {
+      let color_rgba = glam::Vec4::from((color, 1.0)).to_array();
+      let ch = self.characters.get(&c).unwrap();
+      let x_pos = x + ch.bearing.x as f32 * scale;
+      let y_pos = y - (ch.height - ch.bearing.y) * scale;
+      let w = ch.width as f32 * scale;
+      let h = ch.height as f32 * scale;
+      let mut v = (0..6usize)
+          .map(|i| {
+            MyTextVertex {
+              pos_tex: match i {
+                0 => [x_pos, y_pos + h, ch.tx, 0.0],
+                1 => [x_pos, y_pos, ch.tx, ch.ty],
+                2 => [x_pos + w, y_pos, ch.tx_1, ch.ty],
+//
+                3 => [x_pos, y_pos + h, ch.tx, 0.0],
+                4 => [x_pos + w, y_pos, ch.tx_1, ch.ty],
+                5 => [x_pos + w, y_pos + h, ch.tx_1, 0.0],
+                _ => panic!("that's too many vertices!"),
+              },
+              color_rgba,
+            }
+          })
+          .collect::<Vec<_>>();
+
+      self.vertex_buffer.append(&mut v);
+      x += ch.advance * scale;
     }
   }
 }

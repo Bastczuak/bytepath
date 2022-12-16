@@ -454,10 +454,10 @@ pub fn projectile_system(
       commands
           .spawn_empty()
           .insert(Transform {
-          translation,
-          rotation,
-          ..Default::default()
-        })
+            translation,
+            rotation,
+            ..Default::default()
+          })
         .insert(DeadProjectile {
           timer: Timer::from_seconds(0.25, false),
         });
@@ -878,4 +878,14 @@ pub fn boost_pickup_system(
         )
         .unwrap();
   }
+}
+
+pub fn draw_text_system(mut texts: ResMut<TextBuffers>) {
+  texts.build_text(
+    "+Boost",
+    SCREEN_WIDTH as f32,
+    SCREEN_HEIGHT as f32,
+    1.0,
+    glam::vec3(1.0, 1.0, 0.0),
+  );
 }

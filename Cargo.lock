@@ -202,12 +202,13 @@ checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 name = "bytepath"
 version = "0.1.0"
 dependencies = [
- "bevy_ecs",
- "gl_generator",
- "glam",
- "lyon",
- "rand",
- "sdl2",
+    "bevy_ecs",
+    "freetype-rs",
+    "gl_generator",
+    "glam",
+    "lyon",
+    "rand",
+    "sdl2",
 ]
 
 [[package]]
@@ -215,6 +216,12 @@ name = "cache-padded"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1db59621ec70f09c5e9b597b220c7a2b43611f4710dc03ceb8748637775692c"
+
+[[package]]
+name = "cc"
+version = "1.0.78"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a20104e2335ce8a659d6dd92a51a767a0c062599c73b343fd152cb401e828c3d"
 
 [[package]]
 name = "cfg-if"
@@ -282,7 +289,28 @@ version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fc612c5837986b7104a87a0df74a5460931f1c5274be12f8d0f40aa2f30d632"
 dependencies = [
- "num-traits",
+    "num-traits",
+]
+
+[[package]]
+name = "freetype-rs"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d59c337e64822dd56a3a83ed75a662a470736bdb3a9fabfb588dff276b94a4e0"
+dependencies = [
+    "bitflags",
+    "freetype-sys",
+    "libc",
+]
+
+[[package]]
+name = "freetype-sys"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "643148ca6cbad6bec384b52fbe1968547d578c4efe83109e035c43a71734ff88"
+dependencies = [
+    "cc",
+    "libc",
 ]
 
 [[package]]
