@@ -7,7 +7,7 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
-bevy_ecs = "0.8.1"
+bevy_ecs = "0.9.1"
 
 [dependencies.rand]
 version = "0.8.0"
@@ -17,7 +17,7 @@ features = ["small_rng"]
 version = "0.35.0"
 
 [dependencies.glam]
-version = "0.21.3"
+version = "0.22.0"
 
 [dependencies.lyon]
 version = "1.0.0"

@@ -4,7 +4,7 @@ use std::{env, fs::File, path::Path};
 fn main() {
   println!("cargo:rerun-if-changed=build.rs");
   let out_dir = env::var("OUT_DIR").unwrap();
-  let mut file_gl = File::create(&Path::new(&out_dir).join("bindings.rs")).unwrap();
+  let mut file_gl = File::create(Path::new(&out_dir).join("bindings.rs")).unwrap();
 
   Registry::new(
     Api::Gl,

@@ -8,11 +8,11 @@ use lyon::{
   lyon_tessellation::FillOptions,
   math::{point, Point},
   path::Path,
-  tessellation::{BuffersBuilder, FillTessellator, StrokeOptions, StrokeTessellator},
+  tessellation::{BuffersBuilder, StrokeOptions},
 };
 use rand::Rng;
 use sdl2::keyboard::Keycode;
-use std::{collections::HashSet, time::Duration};
+use std::time::Duration;
 
 fn screen_ouf_of_bounds_test(position: glam::Vec2, offset: Option<f32>) -> bool {
   let offset = offset.unwrap_or_default();
@@ -24,7 +24,7 @@ fn screen_ouf_of_bounds_test(position: glam::Vec2, offset: Option<f32>) -> bool 
 
 pub fn player_spawn_system(mut commands: Commands) {
   commands
-      .spawn()
+      .spawn_empty()
       .insert(Player {
         movement_speed: 100.0,
         rotation_speed: 360.0f32.to_radians(),
@@ -40,7 +40,7 @@ pub fn player_spawn_system(mut commands: Commands) {
 pub fn shooting_system(
   mut query: Query<(&Player, &Transform, &mut Interpolation)>,
   mut quads: ResMut<QuadGeometry>,
-  mut tessellator: ResMut<FillTessellator>,
+  mut tessellator: ResMut<Fills>,
   time: Res<Time>,
 ) {
   for (_, transform, mut interpolation) in query.iter_mut() {
@@ -72,8 +72,8 @@ pub fn player_system(
   mut query: Query<(&Player, &mut Transform, &mut Boost, Entity)>,
   mut event_writer: EventWriter<GameEvents>,
   mut circles: ResMut<CircleGeometry>,
-  mut tessellator: ResMut<StrokeTessellator>,
-  keycodes: Res<HashSet<Keycode>>,
+  mut tessellator: ResMut<Strokes>,
+  keycodes: Res<KeyCodes>,
   time: Res<Time>,
 ) {
   for (player, mut transform, mut boost, entity) in query.iter_mut() {
@@ -143,7 +143,7 @@ pub fn player_system(
 pub fn trail_effect_spawn_system(
   mut commands: Commands,
   query: Query<(&Player, &Transform)>,
-  mut rng: ResMut<rand::rngs::SmallRng>,
+  mut rng: ResMut<Randoms>,
 ) {
   for (_, transform) in query.iter() {
     let radius = rng.gen_range(4.0..6.0);
@@ -153,7 +153,7 @@ pub fn trail_effect_spawn_system(
     let time_to_live = rng.gen_range(0.15..0.25);
 
     commands
-        .spawn()
+        .spawn_empty()
         .insert(TrailEffect)
         .insert(Interpolation::new(vec![(radius, 0.0)], time_to_live, true))
       .insert(Transform {
@@ -168,8 +168,8 @@ pub fn trail_effect_system(
   mut query: Query<(&TrailEffect, &mut Interpolation, &Transform, Entity)>,
   boost: Query<&Boost>,
   mut circles: ResMut<CircleGeometry>,
-  mut tessellator: ResMut<FillTessellator>,
-  keycodes: Res<HashSet<Keycode>>,
+  mut tessellator: ResMut<Fills>,
+  keycodes: Res<KeyCodes>,
   time: Res<Time>,
 ) {
   for (_, mut interpolation, transform, entity) in query.iter_mut() {
@@ -214,7 +214,7 @@ pub fn player_explosion_spawn_system(
   mut commands: Commands,
   mut event_reader: EventReader<GameEvents>,
   query: Query<(&Player, &Transform)>,
-  mut rng: ResMut<rand::rngs::SmallRng>,
+  mut rng: ResMut<Randoms>,
 ) {
   for event in event_reader.iter() {
     match event {
@@ -228,7 +228,7 @@ pub fn player_explosion_spawn_system(
             let z_angle = rng.gen_range(0.0..2.0 * std::f32::consts::PI);
 
             commands
-              .spawn()
+                .spawn_empty()
               .insert(Transform {
                 rotation: glam::Quat::from_rotation_z(z_angle),
                 ..*transform
@@ -252,7 +252,7 @@ pub fn explosion_system(
   mut commands: Commands,
   mut query: Query<(&ExplosionEffect, &mut Transform, &mut Interpolation, Entity)>,
   mut lines: ResMut<LineGeometry>,
-  mut tessellator: ResMut<StrokeTessellator>,
+  mut tessellator: ResMut<Strokes>,
   time: Res<Time>,
 ) {
   for (explosion, mut transform, mut interpolation, entity) in query.iter_mut() {
@@ -297,7 +297,7 @@ pub fn camera_shake_system(
   mut event_reader: EventReader<GameEvents>,
   mut camera: ResMut<Camera>,
   mut shake: ResMut<Shake>,
-  raw_time: Res<Duration>, // don't use Res<Time> here because I don't want to apply slow motion to camera shake
+  raw_time: Res<DurationWrapper>, // don't use Res<Time> here because I don't want to apply slow motion to camera shake
 ) {
   let Shake { is_shaking, .. } = *shake;
 
@@ -344,7 +344,7 @@ pub fn screen_flash_system(
   mut event_reader: EventReader<GameEvents>,
   mut flash: ResMut<Flash>,
   mut quads: ResMut<QuadGeometry>,
-  mut tessellator: ResMut<FillTessellator>,
+  mut tessellator: ResMut<Fills>,
 ) {
   for event in event_reader.iter() {
     match event {
@@ -379,7 +379,7 @@ pub fn projectile_spawn_system(
   query: Query<(&Player, &Transform)>,
   mut commands: Commands,
   timer: Res<EntitySpawnTimer>,
-  keycodes: Res<HashSet<Keycode>>,
+  keycodes: Res<KeyCodes>,
 ) {
   for (player, transform) in query.iter() {
     if timer.projectile.finished {
@@ -388,7 +388,7 @@ pub fn projectile_spawn_system(
       let translation = transform.translation + translation_delta;
 
       commands
-        .spawn()
+          .spawn_empty()
         .insert(Transform {
           translation,
           ..*transform
@@ -403,7 +403,7 @@ pub fn projectile_spawn_system(
         let translation = transform.translation + translation_delta;
 
         commands
-          .spawn()
+            .spawn_empty()
           .insert(Transform {
             translation,
             ..*transform
@@ -417,7 +417,7 @@ pub fn projectile_spawn_system(
         let translation = transform.translation + translation_delta;
 
         commands
-          .spawn()
+            .spawn_empty()
           .insert(Transform {
             translation,
             ..*transform
@@ -434,7 +434,7 @@ pub fn projectile_system(
   mut commands: Commands,
   mut query: Query<(&Projectile, &mut Transform, Entity)>,
   mut circles: ResMut<CircleGeometry>,
-  mut tessellator: ResMut<StrokeTessellator>,
+  mut tessellator: ResMut<Strokes>,
   time: Res<Time>,
 ) {
   for (projectile, mut transform, entity) in query.iter_mut() {
@@ -452,7 +452,7 @@ pub fn projectile_system(
       };
 
       commands
-        .spawn()
+          .spawn_empty()
         .insert(Transform {
           translation,
           rotation,
@@ -489,7 +489,7 @@ pub fn projectile_death_system(
   mut commands: Commands,
   mut query: Query<(&mut DeadProjectile, &Transform, Entity)>,
   mut quads: ResMut<QuadGeometry>,
-  mut tessellator: ResMut<FillTessellator>,
+  mut tessellator: ResMut<Fills>,
   time: Res<Time>,
 ) {
   for (mut dead_projectile, transform, entity) in query.iter_mut() {
@@ -519,7 +519,7 @@ pub fn projectile_death_system(
 pub fn timing_system(
   mut event_reader: EventReader<GameEvents>,
   mut timers: ResMut<EntitySpawnTimer>,
-  raw_time: Res<Duration>, // this is set in main() with *world.resource_mut() = dt;
+  raw_time: Res<DurationWrapper>, // this is set in main() with *world.resource_mut() = dt;
   mut time: ResMut<Time>,
 ) {
   for event in event_reader.iter() {
@@ -529,7 +529,7 @@ pub fn timing_system(
   }
 
   if let Some(mut timer) = time.slow_down_timer.take() {
-    timer += *raw_time;
+    timer += **raw_time;
     if timer.as_secs_f32() <= SLOW_DOWN_DURATION_ON_DEATH {
       let easing = ease_in_out_cubic(timer.as_secs_f32() / SLOW_DOWN_DURATION_ON_DEATH);
       let slow_amount = (1.0 - easing) * 0.15 + easing * 1.0;
@@ -537,7 +537,7 @@ pub fn timing_system(
       time.slow_down_timer.replace(timer);
     }
   } else {
-    **time = *raw_time;
+    **time = **raw_time;
   }
 
   for timer in timers.as_array() {
@@ -549,7 +549,7 @@ pub fn tick_effect_spawn_system(query: Query<&Player>, mut commands: Commands, t
   for _ in query.iter() {
     if timer.tick_effect.finished {
       commands
-          .spawn()
+          .spawn_empty()
           .insert(TickEffect)
           .insert(Interpolation::new(vec![(32.0, 0.0)], 0.13, true));
     }
@@ -561,7 +561,7 @@ pub fn tick_effect_system(
   player_query: Query<(&Player, &Transform)>,
   mut tick_effect_query: Query<(&TickEffect, &mut Interpolation, Entity)>,
   mut quads: ResMut<QuadGeometry>,
-  mut tessellator: ResMut<FillTessellator>,
+  mut tessellator: ResMut<Fills>,
   time: Res<Time>,
 ) {
   for (_, transform) in player_query.iter() {
@@ -591,11 +591,7 @@ pub fn tick_effect_system(
   }
 }
 
-pub fn ammo_pickup_spawn_system(
-  mut commands: Commands,
-  timer: Res<EntitySpawnTimer>,
-  mut rng: ResMut<rand::rngs::SmallRng>,
-) {
+pub fn ammo_pickup_spawn_system(mut commands: Commands, timer: Res<EntitySpawnTimer>, mut rng: ResMut<Randoms>) {
   if timer.ammo_pickup.finished {
     let x = rng.gen_range(8.0..SCREEN_WIDTH as f32 - 8.0);
     let y = rng.gen_range(8.0..SCREEN_HEIGHT as f32 - 8.0);
@@ -604,13 +600,13 @@ pub fn ammo_pickup_spawn_system(
     let rotation_speed = std::f32::consts::PI;
 
     commands
-      .spawn()
-      .insert(AmmoPickup {
-        movement_speed,
-        rotation_speed,
-        center_rotation_speed: rng.gen_range(-2.0 * std::f32::consts::PI..2.0 * std::f32::consts::PI),
-        timer: Timer::from_seconds(0.15, false),
-      })
+        .spawn_empty()
+        .insert(AmmoPickup {
+          movement_speed,
+          rotation_speed,
+          center_rotation_speed: rng.gen_range(-2.0 * std::f32::consts::PI..2.0 * std::f32::consts::PI),
+          timer: Timer::from_seconds(0.15, false),
+        })
       .insert(Transform {
         translation: glam::vec3(x, y, Z_INDEX_AMMO_PICKUP),
         rotation,
@@ -624,10 +620,10 @@ pub fn ammo_pickup_system(
   player_query: Query<&Transform, With<Player>>,
   mut query: Query<(&mut AmmoPickup, &mut Transform, Entity), Without<Player>>,
   mut quads: ResMut<QuadGeometry>,
-  mut strokes: ResMut<StrokeTessellator>,
-  mut fills: ResMut<FillTessellator>,
+  mut strokes: ResMut<Strokes>,
+  mut fills: ResMut<Fills>,
   time: Res<Time>,
-  mut rng: ResMut<rand::rngs::SmallRng>,
+  mut rng: ResMut<Randoms>,
 ) {
   for (mut ammo, mut transform, entity) in query.iter_mut() {
     let pos = transform.translation.xy();
@@ -690,7 +686,7 @@ pub fn ammo_pickup_system(
           let z_angle = rng.gen_range(0.0..2.0 * std::f32::consts::PI);
 
           commands
-            .spawn()
+              .spawn_empty()
             .insert(Transform {
               rotation: glam::Quat::from_rotation_z(z_angle),
               ..*transform
@@ -731,11 +727,7 @@ pub fn ammo_pickup_system(
   }
 }
 
-pub fn boost_pickup_spawn_system(
-  mut commands: Commands,
-  timer: Res<EntitySpawnTimer>,
-  mut rng: ResMut<rand::rngs::SmallRng>,
-) {
+pub fn boost_pickup_spawn_system(mut commands: Commands, timer: Res<EntitySpawnTimer>, mut rng: ResMut<Randoms>) {
   if timer.boost_pickup.finished {
     let movement_direction = if rng.gen_bool(1.0 / 2.0) { -1.0 } else { 1.0 };
     let x = if movement_direction > 0.0 {
@@ -747,7 +739,7 @@ pub fn boost_pickup_spawn_system(
     let movement_speed = rng.gen_range(20.0..40.0);
 
     commands
-        .spawn()
+        .spawn_empty()
         .insert(BoostPickup {
           movement_direction,
           movement_speed,
@@ -770,8 +762,8 @@ pub fn boost_pickup_system(
     Query<(&mut BoostPickup, &Transform, &mut Interpolation, Entity), Without<Player>>,
   )>,
   mut quads: ResMut<QuadGeometry>,
-  mut strokes: ResMut<StrokeTessellator>,
-  mut fills: ResMut<FillTessellator>,
+  mut strokes: ResMut<Strokes>,
+  mut fills: ResMut<Fills>,
   time: Res<Time>,
 ) {
   for (mut boost, transform, mut interpolation, entity) in set.p1().iter_mut() {

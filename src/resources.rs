@@ -1,12 +1,16 @@
 use crate::render::{gl::types::*, MyVertex};
-use lyon::tessellation::VertexBuffers;
+use bevy_ecs::prelude::Resource;
+use lyon::tessellation::{FillTessellator, StrokeTessellator, VertexBuffers};
+use rand::rngs::SmallRng;
+use sdl2::keyboard::Keycode;
 use std::{
+  collections::HashSet,
   marker::PhantomData,
   ops::{Deref, DerefMut},
   time::Duration,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct Camera {
   pub camera_pos: glam::Vec3,
   pub camera_front: glam::Vec3,
@@ -27,7 +31,7 @@ impl Default for Camera {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct Shake {
   pub is_shaking: bool,
   pub duration: f32,
@@ -38,7 +42,7 @@ pub struct Shake {
   pub samples_y: Vec<f32>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct Flash {
   pub frame_cnt: u8,
   pub is_flashing: bool,
@@ -61,7 +65,7 @@ impl Default for Shake {
     let frequency = 60.0;
     let amplitude = 10.0;
     let sample_count = (duration * frequency) as usize;
-    let mut rng = rand::rngs::SmallRng::from_entropy();
+    let mut rng = SmallRng::from_entropy();
     let samples_x = (0..sample_count).map(|_| rng.gen_range(0.0..1.0) * 2.0 - 1.0).collect();
     let samples_y = (0..sample_count).map(|_| rng.gen_range(0.0..1.0) * 2.0 - 1.0).collect();
 
@@ -81,7 +85,7 @@ pub type CircleGeometry = DrawBuffers<Circle>;
 pub type QuadGeometry = DrawBuffers<Quad>;
 pub type LineGeometry = DrawBuffers<Line>;
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct DrawBuffers<Geometry> {
   pub vao: GLuint,
   pub vbo: GLuint,
@@ -102,19 +106,19 @@ impl<T> DrawBuffers<T> {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct Circle;
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct Rectangle;
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct Quad;
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct Line;
 
-#[derive(Debug)]
+#[derive(Debug, Resource)]
 pub struct EntitySpawnTimer {
   pub projectile: Timer,
   pub tick_effect: Timer,
@@ -144,7 +148,7 @@ impl EntitySpawnTimer {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Resource)]
 pub struct Time {
   pub duration: Duration,
   pub slow_down_timer: Option<Duration>,
@@ -164,7 +168,7 @@ impl DerefMut for Time {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Resource)]
 pub struct Timer {
   pub elapsed: f32,
   pub duration: f32,
@@ -198,5 +202,88 @@ impl Timer {
   pub fn reset(&mut self) {
     self.finished = false;
     self.elapsed = 0.0;
+  }
+}
+
+#[derive(Resource)]
+pub struct Fills(pub FillTessellator);
+
+impl Deref for Fills {
+  type Target = FillTessellator;
+  fn deref(&self) -> &FillTessellator {
+    &self.0
+  }
+}
+
+impl DerefMut for Fills {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
+
+#[derive(Resource)]
+pub struct Strokes(pub StrokeTessellator);
+
+impl Deref for Strokes {
+  type Target = StrokeTessellator;
+  fn deref(&self) -> &StrokeTessellator {
+    &self.0
+  }
+}
+
+impl DerefMut for Strokes {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
+
+#[derive(Debug, Resource)]
+pub struct KeyCodes(pub HashSet<Keycode>);
+
+impl Deref for KeyCodes {
+  type Target = HashSet<Keycode>;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl DerefMut for KeyCodes {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
+
+#[derive(Debug, Resource)]
+pub struct Randoms(pub SmallRng);
+
+impl Deref for Randoms {
+  type Target = SmallRng;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl DerefMut for Randoms {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
+
+#[derive(Debug, Resource)]
+pub struct DurationWrapper(pub Duration);
+
+impl Deref for DurationWrapper {
+  type Target = Duration;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl DerefMut for DurationWrapper {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
   }
 }

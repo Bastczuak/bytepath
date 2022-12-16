@@ -50,16 +50,16 @@ fn main() -> Result<(), String> {
 
   let mut world = World::default();
   world.insert_resource(Time::default());
-  world.insert_resource(rand::rngs::SmallRng::from_entropy());
+  world.insert_resource(Randoms(rand::rngs::SmallRng::from_entropy()));
   world.insert_resource(EntitySpawnTimer::default());
-  world.insert_resource(HashSet::<Keycode>::default());
+  world.insert_resource(KeyCodes(HashSet::<Keycode>::default()));
   world.insert_resource(Camera::default());
   world.insert_resource(Shake::default());
   world.insert_resource(Flash::default());
-  world.insert_resource(Duration::default());
+  world.insert_resource(DurationWrapper(Duration::default()));
   world.insert_resource(Events::<GameEvents>::default());
-  world.insert_resource(StrokeTessellator::new());
-  world.insert_resource(FillTessellator::new());
+  world.insert_resource(Strokes(StrokeTessellator::new()));
+  world.insert_resource(Fills(FillTessellator::new()));
   world.insert_resource(create_draw_buffer::<Circle>(
     &gl,
     &opengl_ctx,
@@ -121,7 +121,7 @@ fn main() -> Result<(), String> {
     while frame_time.as_secs_f32() > 0.0 {
       let dt = std::cmp::min(frame_time, frame_dt);
 
-      *world.resource_mut() = dt;
+      *world.resource_mut() = DurationWrapper(dt);
 
       for event in event_pump.poll_iter() {
         match event {
@@ -143,7 +143,7 @@ fn main() -> Result<(), String> {
         .pressed_scancodes()
         .filter_map(Keycode::from_scancode)
         .collect::<HashSet<Keycode>>();
-      *world.resource_mut() = keycodes;
+      *world.resource_mut() = KeyCodes(keycodes);
 
       game_schedule.run(&mut world);
 
