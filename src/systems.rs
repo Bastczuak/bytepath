@@ -442,8 +442,8 @@ pub fn projectile_system(
     if screen_ouf_of_bounds_test(pos, None) {
       commands.entity(entity).despawn();
 
-      let clamped_x = pos.x.max(0.0).min(SCREEN_WIDTH as f32 - DEAD_PROJECTILE_HEIGHT);
-      let clamped_y = pos.y.max(0.0).min(SCREEN_HEIGHT as f32 - DEAD_PROJECTILE_HEIGHT);
+      let clamped_x = pos.x.clamp(0.0, SCREEN_WIDTH as f32 - DEAD_PROJECTILE_HEIGHT);
+      let clamped_y = pos.y.clamp(0.0, SCREEN_HEIGHT as f32 - DEAD_PROJECTILE_HEIGHT);
       let translation = glam::vec3(clamped_x, clamped_y, 1.0);
       let rotation = if pos.x < 0.0 || pos.x > SCREEN_WIDTH as f32 {
         glam::Quat::from_rotation_z(-std::f32::consts::PI / 2.0)
@@ -453,7 +453,7 @@ pub fn projectile_system(
 
       commands
           .spawn_empty()
-        .insert(Transform {
+          .insert(Transform {
           translation,
           rotation,
           ..Default::default()
