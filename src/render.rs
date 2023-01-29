@@ -516,7 +516,7 @@ pub fn create_text_buffer(gl: &Gl, opengl_ctx: &OpenglCtx) -> TextBuffers {
     gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
     gl.BufferData(
       gl::ARRAY_BUFFER,
-      (6 * std::mem::size_of::<MyVertex>()) as GLsizeiptr,
+      (6 * std::mem::size_of::<MyVertex>() * 1000) as GLsizeiptr,
       std::ptr::null(),
       gl::DYNAMIC_DRAW,
     );
@@ -757,11 +757,11 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
 
     gl.BindVertexArray(texts.vao);
     gl.BindBuffer(gl::ARRAY_BUFFER, texts.vbo);
-    gl.BufferData(
+    gl.BufferSubData(
       gl::ARRAY_BUFFER,
+      0,
       (texts.vertex_buffer.len() * std::mem::size_of::<MyTextVertex>()) as GLsizeiptr,
       texts.vertex_buffer.as_ptr() as *const GLvoid,
-      gl::DYNAMIC_DRAW,
     );
     gl.BindBuffer(gl::ARRAY_BUFFER, 0);
     gl.DrawArrays(gl::TRIANGLES, 0, texts.vertex_buffer.len() as i32);
