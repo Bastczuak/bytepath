@@ -121,13 +121,16 @@ pub struct Character {
 pub struct TextBuffers {
   pub vao: GLuint,
   pub vbo: GLuint,
+  pub ebo: GLuint,
   pub atlas_texture: GLuint,
   pub characters: HashMap<char, Character>,
   pub vertex_buffer: Vec<MyTextVertex>,
+  pub index_buffer: Vec<u16>,
 }
 
 impl TextBuffers {
   pub fn build_text(&mut self, text: &str, mut x: f32, y: f32, scale: f32, color: glam::Vec3) {
+    let mut offset = self.vertex_buffer.len() as u16;
     for c in text.chars() {
       let color_rgba = glam::Vec4::from((color, 1.0)).to_array();
       let ch = self.characters.get(&c).unwrap();
@@ -135,17 +138,14 @@ impl TextBuffers {
       let y_pos = y - (ch.height - ch.bearing.y) * scale;
       let w = ch.width as f32 * scale;
       let h = ch.height as f32 * scale;
-      let mut v = (0..6usize)
+      let mut v = (0..4usize)
           .map(|i| {
             MyTextVertex {
               pos_tex: match i {
-                0 => [x_pos, y_pos + h, ch.tx, 0.0],
-                1 => [x_pos, y_pos, ch.tx, ch.ty],
-                2 => [x_pos + w, y_pos, ch.tx_1, ch.ty],
-//
-                3 => [x_pos, y_pos + h, ch.tx, 0.0],
-                4 => [x_pos + w, y_pos, ch.tx_1, ch.ty],
-                5 => [x_pos + w, y_pos + h, ch.tx_1, 0.0],
+                0 => [x_pos + w, y_pos + h, ch.tx_1, 0.0], // top right
+                1 => [x_pos + w, y_pos, ch.tx_1, ch.ty], // bottom right
+                2 => [x_pos, y_pos, ch.tx, ch.ty], // bottom left
+                3 => [x_pos, y_pos + h, ch.tx, 0.0], // top left
                 _ => panic!("that's too many vertices!"),
               },
               color_rgba,
@@ -153,8 +153,20 @@ impl TextBuffers {
           })
           .collect::<Vec<_>>();
 
+      let mut indices = vec![
+        0u16 + offset, // top right
+        1 + offset, // bottom right
+        3 + offset, // top left
+        //
+        1 + offset, // bottom right
+        2 + offset, // bottom left
+        3 + offset, // top left
+      ];
+
       self.vertex_buffer.append(&mut v);
+      self.index_buffer.append(&mut indices);
       x += ch.advance * scale;
+      offset += 4;
     }
   }
 }

@@ -428,6 +428,10 @@ pub fn create_draw_buffer<T>(
       get_offset!(MyVertex, position) as *const GLvoid,
     );
 
+    gl.BindBuffer(gl::ARRAY_BUFFER, 0);
+    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
+    gl.BindVertexArray(0);
+
     DrawBuffers::<T>::new(vao, vbo, ebo)
   }
 }
@@ -508,15 +512,23 @@ pub fn create_text_buffer(gl: &Gl, opengl_ctx: &OpenglCtx) -> TextBuffers {
     (texture, characters)
   };
 
-  let (vao, vbo) = unsafe {
-    let (mut vao, mut vbo) = (0, 0);
+  let (vao, vbo, ebo) = unsafe {
+    let (mut vao, mut vbo, mut ebo) = (0, 0, 0);
     gl.GenVertexArrays(1, &mut vao);
     gl.GenBuffers(1, &mut vbo);
+    gl.GenBuffers(1, &mut ebo);
     gl.BindVertexArray(vao);
     gl.BindBuffer(gl::ARRAY_BUFFER, vbo);
     gl.BufferData(
       gl::ARRAY_BUFFER,
-      (6 * std::mem::size_of::<MyVertex>() * 1000) as GLsizeiptr,
+      (6 * std::mem::size_of::<MyVertex>() * 10000) as GLsizeiptr,
+      std::ptr::null(),
+      gl::DYNAMIC_DRAW,
+    );
+    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
+    gl.BufferData(
+      gl::ELEMENT_ARRAY_BUFFER,
+      (6 * std::mem::size_of::<u16>() * 1000) as GLsizeiptr,
       std::ptr::null(),
       gl::DYNAMIC_DRAW,
     );
@@ -544,17 +556,20 @@ pub fn create_text_buffer(gl: &Gl, opengl_ctx: &OpenglCtx) -> TextBuffers {
     );
 
     gl.BindBuffer(gl::ARRAY_BUFFER, 0);
+    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
     gl.BindVertexArray(0);
 
-    (vao, vbo)
+    (vao, vbo, ebo)
   };
 
   TextBuffers {
     vao,
     vbo,
+    ebo,
     atlas_texture,
     characters,
     vertex_buffer: Vec::new(),
+    index_buffer: Vec::new(),
   }
 }
 
@@ -763,13 +778,28 @@ pub fn render_gl(gl: &Gl, opengl_ctx: &OpenglCtx, render_state: RenderSystemStat
       (texts.vertex_buffer.len() * std::mem::size_of::<MyTextVertex>()) as GLsizeiptr,
       texts.vertex_buffer.as_ptr() as *const GLvoid,
     );
-    gl.BindBuffer(gl::ARRAY_BUFFER, 0);
-    gl.DrawArrays(gl::TRIANGLES, 0, texts.vertex_buffer.len() as i32);
+    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, texts.ebo);
+    gl.BufferData(
+      gl::ELEMENT_ARRAY_BUFFER,
+      (texts.index_buffer.len() * std::mem::size_of::<u16>()) as GLsizeiptr,
+      texts.index_buffer.as_ptr() as *const GLvoid,
+      gl::DYNAMIC_DRAW,
+    );
 
+    gl.DrawElements(
+      gl::TRIANGLES,
+      texts.index_buffer.len() as i32,
+      gl::UNSIGNED_SHORT,
+      std::ptr::null(),
+    );
+
+    gl.BindBuffer(gl::ARRAY_BUFFER, 0);
+    gl.BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
     gl.BindVertexArray(0);
     gl.BindTexture(gl::TEXTURE_2D, 0);
     gl.Disable(gl::BLEND);
     texts.vertex_buffer.clear();
+    texts.index_buffer.clear();
     //----------------------TEXT----------------------//
   }
   Ok(())

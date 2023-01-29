@@ -881,11 +881,17 @@ pub fn boost_pickup_system(
 }
 
 pub fn draw_text_system(mut texts: ResMut<TextBuffers>) {
-  texts.build_text(
-    "+Boost",
-    SCREEN_WIDTH as f32,
-    SCREEN_HEIGHT as f32,
-    1.0,
-    glam::vec3(1.0, 1.0, 0.0),
-  );
+  for x in 0..SCREEN_RENDER_WIDTH {
+    for y in 0..SCREEN_RENDER_HEIGHT {
+      if x % 110 == 0 && y % 110 == 0 {
+        texts.build_text(
+          "+Boost",
+          x as f32,
+          y as f32,
+          1.0,
+          glam::vec3(1.0, 1.0, 0.0),
+        );
+      }
+    }
+  }
 }
