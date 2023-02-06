@@ -836,6 +836,14 @@ pub fn boost_pickup_system(
         commands
             .entity(entity)
             .insert(Interpolation::new(vec![(1.0, 2.0)], 0.3, false));
+
+        commands
+            .spawn_empty()
+            .insert(Text {
+              text: String::from("+Boost"),
+              timer: Timer::from_seconds(1.0, false),
+            })
+            .insert(transform.clone());
         continue;
       }
     }
@@ -880,18 +888,26 @@ pub fn boost_pickup_system(
   }
 }
 
-pub fn draw_text_system(mut texts: ResMut<TextBuffers>) {
-  for x in 0..SCREEN_RENDER_WIDTH {
-    for y in 0..SCREEN_RENDER_HEIGHT {
-      if x % 110 == 0 && y % 110 == 0 {
-        texts.build_text(
-          "+Boost",
-          x as f32,
-          y as f32,
-          1.0,
-          glam::vec3(1.0, 1.0, 0.0),
-        );
-      }
+pub fn draw_text_system(
+  mut query: Query<(Entity, &mut Text, &Transform)>,
+  mut texts: ResMut<TextBuffers>,
+  mut commands: Commands,
+  time: Res<Time>,
+) {
+  for (e, mut text, transform) in query.iter_mut() {
+    text.timer.tick(**time);
+
+    if text.timer.finished {
+      commands.entity(e).despawn();
+      continue;
     }
+
+    texts.build_text(
+      text.text.as_str(),
+      transform.translation.x * 2.0,
+      transform.translation.y * 2.0 - 10.0,
+      1.0,
+      ColorGl::from(RGB_COLOR_BOOST),
+    )
   }
 }

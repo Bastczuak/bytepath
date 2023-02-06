@@ -10,6 +10,7 @@ use std::{
   time::Duration,
 };
 use std::collections::HashMap;
+use crate::color::ColorGl;
 
 #[derive(Debug, Resource)]
 pub struct Camera {
@@ -129,13 +130,12 @@ pub struct TextBuffers {
 }
 
 impl TextBuffers {
-  pub fn build_text(&mut self, text: &str, mut x: f32, y: f32, scale: f32, color: glam::Vec3) {
+  pub fn build_text(&mut self, text: &str, mut x: f32, y: f32, scale: f32, color: ColorGl) {
     let mut offset = self.vertex_buffer.len() as u16;
     for c in text.chars() {
-      let color_rgba = glam::Vec4::from((color, 1.0)).to_array();
       let ch = self.characters.get(&c).unwrap();
-      let x_pos = x + ch.bearing.x as f32 * scale;
-      let y_pos = y - (ch.height - ch.bearing.y) * scale;
+      let x_pos = (x + ch.bearing.x as f32 * scale).round();
+      let y_pos = (y - (ch.height - ch.bearing.y) * scale).round();
       let w = ch.width as f32 * scale;
       let h = ch.height as f32 * scale;
       let mut v = (0..4usize)
@@ -148,7 +148,7 @@ impl TextBuffers {
                 3 => [x_pos, y_pos + h, ch.tx, 0.0], // top left
                 _ => panic!("that's too many vertices!"),
               },
-              color_rgba,
+              color_rgba: color.to_array(),
             }
           })
           .collect::<Vec<_>>();

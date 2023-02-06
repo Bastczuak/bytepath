@@ -440,7 +440,7 @@ pub fn create_text_buffer(gl: &Gl, opengl_ctx: &OpenglCtx) -> TextBuffers {
   let path = std::path::Path::new("m5x7.ttf");
   let library = ft::Library::init().unwrap();
   let face = library.new_face(path, 0).unwrap();
-  face.set_pixel_sizes(0, 48).unwrap();
+  face.set_pixel_sizes(0, 32).unwrap();
 
   let (atlas_texture, characters) = unsafe {
     let (mut w, mut h) = (0, 0);

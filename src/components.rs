@@ -139,3 +139,9 @@ pub struct BoostPickup {
   pub timer: Timer,
   pub visible: bool,
 }
+
+#[derive(Component, Debug)]
+pub struct Text {
+  pub text: String,
+  pub timer: Timer,
+}
