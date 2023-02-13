@@ -500,7 +500,7 @@ pub fn projectile_death_system(
       continue;
     }
 
-    let color_rgba = if dead_projectile.timer.elapsed >= 0.1 {
+    let color_rgba = if dead_projectile.timer.elapsed.as_secs_f32() >= 0.1 {
       ColorGl::from(RGB_COLOR_DEATH)
     } else {
       ColorGl::from(RGB_COLOR_PLAYER)
@@ -637,17 +637,17 @@ pub fn ammo_pickup_system(
       continue;
     }
 
-    if ammo.timer.elapsed > 0.0 {
+    if ammo.timer.elapsed.as_secs_f32() > 0.0 {
       ammo.timer.tick(**time);
       let mat4 = transform.mat4_center() * glam::Mat4::from_translation(glam::vec3(9.5 / -2.0, 9.5 / -2.0, 1.0));
 
       fills
-        .tessellate_rectangle(
-          &Box2D::from_size(Size::new(9.5, 9.5)),
-          &FillOptions::default(),
-          &mut BuffersBuilder::new(
-            &mut quads.vertex_buffer,
-            WithTransformColor {
+          .tessellate_rectangle(
+            &Box2D::from_size(Size::new(9.5, 9.5)),
+            &FillOptions::default(),
+            &mut BuffersBuilder::new(
+              &mut quads.vertex_buffer,
+              WithTransformColor {
               transform: mat4,
               color_rgba: ColorGl::from(RGB_COLOR_AMMO_PICKUP),
             },

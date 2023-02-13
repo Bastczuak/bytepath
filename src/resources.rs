@@ -235,24 +235,24 @@ impl DerefMut for Time {
 
 #[derive(Debug, Default, Resource)]
 pub struct Timer {
-  pub elapsed: f32,
-  pub duration: f32,
-  pub count: u8,
+  pub elapsed: Duration,
+  pub duration: Duration,
+  pub count: u32,
   pub finished: bool,
-  pub repeating: bool,
+  repeating: bool,
 }
 
 impl Timer {
   pub fn from_seconds(seconds: f32, repeating: bool) -> Self {
     Self {
-      duration: seconds,
+      duration: Duration::from_secs_f32(seconds),
       repeating,
       ..Default::default()
     }
   }
 
   pub fn tick(&mut self, delta: Duration) {
-    self.elapsed = (self.elapsed + delta.as_secs_f32()).min(self.duration);
+    self.elapsed = (self.elapsed + delta).min(self.duration);
 
     if self.repeating && self.finished {
       self.reset();
@@ -266,7 +266,7 @@ impl Timer {
 
   pub fn reset(&mut self) {
     self.finished = false;
-    self.elapsed = 0.0;
+    self.elapsed = Duration::from_secs_f32(0.0);
   }
 }
 
