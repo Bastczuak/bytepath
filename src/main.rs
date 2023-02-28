@@ -10,7 +10,7 @@ mod systems;
 use crate::{
   environment::{RGB_CLEAR_COLOR, SCREEN_RENDER_HEIGHT, SCREEN_RENDER_WIDTH},
   events::GameEvents,
-  render::{calculate_size_for_lines, calculate_size_for_quads, Gl},
+  render::{calculate_size_for_lines, calculate_size_for_quads, create_text_buffer, Gl},
   resources::*,
   systems::*,
 };
@@ -28,7 +28,6 @@ use std::{
   time::{Duration, Instant},
 };
 use systems::shooting_system;
-use crate::render::create_text_buffer;
 
 fn main() -> Result<(), String> {
   let sdl_context = sdl2::init()?;

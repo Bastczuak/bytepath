@@ -648,11 +648,11 @@ pub fn ammo_pickup_system(
             &mut BuffersBuilder::new(
               &mut quads.vertex_buffer,
               WithTransformColor {
-              transform: mat4,
-              color_rgba: ColorGl::from(RGB_COLOR_AMMO_PICKUP),
-            },
-          ),
-        )
+                transform: mat4,
+                color_rgba: ColorGl::from(RGB_COLOR_AMMO_PICKUP),
+              },
+            ),
+          )
         .unwrap();
       continue;
     }
@@ -745,7 +745,7 @@ pub fn boost_pickup_spawn_system(mut commands: Commands, timer: Res<EntitySpawnT
           movement_speed,
           center_rotation_speed: rng.gen_range(-2.0 * std::f32::consts::PI..2.0 * std::f32::consts::PI),
           visible: true,
-          timer: Timer::from_seconds(0.05, true),
+          timer: Timer::from_seconds(0.55, true),
         })
         .insert(Transform {
           translation: glam::vec3(x, y, Z_INDEX_BOOST_PICKUP),
@@ -770,18 +770,20 @@ pub fn boost_pickup_system(
     boost.timer.tick(**time);
     let time = time.as_secs_f32();
     let (values, done) = interpolation.eval(time, ease_in_out_cubic);
-    let color = if boost.timer.count > 3 {
+    let color = if boost.timer.elapsed >= Duration::from_secs_f32(0.15) {
       RGB_COLOR_BOOST
     } else {
       RGB_COLOR_PLAYER
     };
 
-    if boost.timer.count == 10 {
+    if boost.timer.finished {
       commands.entity(entity).despawn();
       continue;
     }
 
-    if boost.timer.finished && boost.timer.count > 3 {
+    if boost.timer.elapsed >= Duration::from_secs_f32(0.15) && boost.timer.elapsed >= boost.timer.checkpoint
+    {
+      boost.timer.add_checkpoint(Duration::from_secs_f32(0.05));
       boost.visible = !boost.visible;
     }
 
@@ -841,7 +843,7 @@ pub fn boost_pickup_system(
             .spawn_empty()
             .insert(Text {
               text: String::from("+Boost"),
-              timer: Timer::from_seconds(1.0, false),
+              timer: Timer::from_seconds(1.0, true),
             })
             .insert(transform.clone());
         continue;

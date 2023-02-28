@@ -1,16 +1,17 @@
-use crate::render::{gl::types::*, MyTextVertex, MyVertex};
+use crate::{
+  color::ColorGl,
+  render::{gl::types::*, MyTextVertex, MyVertex},
+};
 use bevy_ecs::prelude::Resource;
 use lyon::tessellation::{FillTessellator, StrokeTessellator, VertexBuffers};
 use rand::rngs::SmallRng;
 use sdl2::keyboard::Keycode;
 use std::{
-  collections::HashSet,
+  collections::{HashMap, HashSet},
   marker::PhantomData,
   ops::{Deref, DerefMut},
   time::Duration,
 };
-use std::collections::HashMap;
-use crate::color::ColorGl;
 
 #[derive(Debug, Resource)]
 pub struct Camera {
@@ -143,9 +144,9 @@ impl TextBuffers {
             MyTextVertex {
               pos_tex: match i {
                 0 => [x_pos + w, y_pos + h, ch.tx_1, 0.0], // top right
-                1 => [x_pos + w, y_pos, ch.tx_1, ch.ty], // bottom right
-                2 => [x_pos, y_pos, ch.tx, ch.ty], // bottom left
-                3 => [x_pos, y_pos + h, ch.tx, 0.0], // top left
+                1 => [x_pos + w, y_pos, ch.tx_1, ch.ty],   // bottom right
+                2 => [x_pos, y_pos, ch.tx, ch.ty],         // bottom left
+                3 => [x_pos, y_pos + h, ch.tx, 0.0],       // top left
                 _ => panic!("that's too many vertices!"),
               },
               color_rgba: color.to_array(),
@@ -155,8 +156,8 @@ impl TextBuffers {
 
       let mut indices = vec![
         0u16 + offset, // top right
-        1 + offset, // bottom right
-        3 + offset, // top left
+        1 + offset,    // bottom right
+        3 + offset,    // top left
         //
         1 + offset, // bottom right
         2 + offset, // bottom left
@@ -237,9 +238,9 @@ impl DerefMut for Time {
 pub struct Timer {
   pub elapsed: Duration,
   pub duration: Duration,
-  pub count: u32,
   pub finished: bool,
   repeating: bool,
+  pub checkpoint: Duration,
 }
 
 impl Timer {
@@ -258,15 +259,17 @@ impl Timer {
       self.reset();
     }
 
-    if self.elapsed >= self.duration {
-      self.finished = true;
-      self.count += 1;
-    }
+    self.finished = self.elapsed >= self.duration;
+  }
+
+  pub fn add_checkpoint(&mut self, t: Duration) {
+    self.checkpoint = self.elapsed + t;
   }
 
   pub fn reset(&mut self) {
     self.finished = false;
     self.elapsed = Duration::from_secs_f32(0.0);
+    self.checkpoint = self.elapsed;
   }
 }
 
