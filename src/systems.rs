@@ -2,12 +2,12 @@ use crate::{
   color::ColorGl, components::*, easings::*, environment::*, render::WithTransformColor, resources::*, GameEvents,
 };
 use bevy_ecs::prelude::*;
-use glam::Vec3Swizzles;
+use glam::{Vec3Swizzles, Vec4Swizzles};
 use lyon::{
   geom::{Box2D, Size},
   lyon_tessellation::FillOptions,
   math::{point, Point},
-  path::Path,
+  path::{Path, PathEvent, Position, Winding},
   tessellation::{BuffersBuilder, StrokeOptions},
 };
 use rand::Rng;
@@ -20,6 +20,125 @@ fn screen_ouf_of_bounds_test(position: glam::Vec2, offset: Option<f32>) -> bool 
     || position.x > SCREEN_WIDTH as f32 + offset
     || position.y < -offset
     || position.y > SCREEN_HEIGHT as f32 + offset
+}
+
+pub fn sat_test_system(
+  query: Query<(&AmmoPickup, &Transform, Entity), Without<Player>>,
+  mut quads: ResMut<QuadGeometry>,
+  mut fills: ResMut<Fills>,
+) {
+  for (_, transform_a, entity_a) in query.iter() {
+    let mut color = RGB_COLOR_AMMO_PICKUP;
+    let mat4 = transform_a.mat4_center() * glam::Mat4::from_translation(glam::vec3(10.0 / -2.0, 10.0 / -2.0, 1.0));
+    let mut builder = Path::builder();
+    builder.add_rectangle(&Box2D::from_size(Size::new(10.0, 10.0)), Winding::Positive);
+    let path = builder.build();
+
+    let vertices_a = &path
+        .iter()
+        .filter_map(|x| match x {
+          PathEvent::End { first, last, .. } => {
+            let p0 = (mat4 * glam::vec4(last.x, last.y, 0.0, 1.0)).xy();
+            let p1 = (mat4 * glam::vec4(first.x, first.y, 0.0, 1.0)).xy();
+            Some(glam::Vec4::from((p0, p1)))
+          }
+          PathEvent::Line { from, to } => {
+            let p0 = (mat4 * glam::vec4(from.x, from.y, 0.0, 1.0)).xy();
+            let p1 = (mat4 * glam::vec4(to.x, to.y, 0.0, 1.0)).xy();
+            Some(glam::Vec4::from((p0, p1)))
+          }
+          _ => None,
+        })
+        .collect::<Vec<glam::Vec4>>();
+
+    for (_, transform_b, entity_b) in query.iter() {
+      if entity_a == entity_b {
+        continue;
+      }
+
+      let mat4 = transform_b.mat4_center() * glam::Mat4::from_translation(glam::vec3(10.0 / -2.0, 10.0 / -2.0, 1.0));
+      let mut builder = Path::builder();
+      builder.add_rectangle(&Box2D::from_size(Size::new(10.0, 10.0)), Winding::Positive);
+      let path = builder.build();
+
+      let vertices_b = &path
+          .iter()
+          .filter_map(|x| match x {
+            PathEvent::End { first, last, .. } => {
+              let p0 = (mat4 * glam::vec4(last.x, last.y, 0.0, 1.0)).xy();
+              let p1 = (mat4 * glam::vec4(first.x, first.y, 0.0, 1.0)).xy();
+              Some(glam::Vec4::from((p0, p1)))
+            }
+            PathEvent::Line { from, to } => {
+              let p0 = (mat4 * glam::vec4(from.x, from.y, 0.0, 1.0)).xy();
+              let p1 = (mat4 * glam::vec4(to.x, to.y, 0.0, 1.0)).xy();
+              Some(glam::Vec4::from((p0, p1)))
+            }
+            _ => None,
+          })
+          .collect::<Vec<glam::Vec4>>();
+
+      let sat = |vertices_a: &Vec<glam::Vec4>, vertices_b: &Vec<glam::Vec4>| -> bool {
+        let min_max = |axis: &glam::Vec2, vertices: &Vec<glam::Vec2>| {
+          let mut min = f32::MAX;
+          let mut max = f32::MIN;
+
+          for vertex in vertices {
+            let dot = axis.dot(*vertex);
+            min = min.min(dot);
+            max = max.max(dot);
+          }
+
+          (min, max)
+        };
+
+        let vertices_a_vec2 = vertices_a.iter().map(|x| x.xy()).collect::<Vec<glam::Vec2>>();
+        let vertices_b_vec2 = vertices_b.iter().map(|x| x.xy()).collect::<Vec<glam::Vec2>>();
+
+        for vertex in vertices_a {
+          let axis_vector_norm = (vertex.zw() - vertex.xy()).perp().normalize();
+
+          let (min_a, max_a) = min_max(&axis_vector_norm, &vertices_a_vec2);
+          let (min_b, max_b) = min_max(&axis_vector_norm, &vertices_b_vec2);
+
+          if min_a - max_b > 0.0 || min_b - max_a > 0.0 {
+            return false;
+          }
+        }
+
+        for vertex in vertices_b {
+          let axis_vector_norm = (vertex.zw() - vertex.xy()).perp().normalize();
+
+          let (min_a, max_a) = min_max(&axis_vector_norm, &vertices_a_vec2);
+          let (min_b, max_b) = min_max(&axis_vector_norm, &vertices_b_vec2);
+
+          if min_a - max_b > 0.0 || min_b - max_a > 0.0 {
+            return false;
+          }
+        }
+
+        return true;
+      };
+
+      if sat(&vertices_a, &vertices_b) {
+        color = RGB_COLOR_DEATH;
+      }
+    }
+
+    fills
+        .tessellate_path(
+          &path,
+          &FillOptions::default(),
+          &mut BuffersBuilder::new(
+            &mut quads.vertex_buffer,
+            WithTransformColor {
+              transform: mat4,
+              color_rgba: ColorGl::from(color),
+            },
+          ),
+        )
+        .unwrap();
+  }
 }
 
 pub fn player_spawn_system(mut commands: Commands) {
@@ -781,8 +900,7 @@ pub fn boost_pickup_system(
       continue;
     }
 
-    if boost.timer.elapsed >= Duration::from_secs_f32(0.15) && boost.timer.elapsed >= boost.timer.checkpoint
-    {
+    if boost.timer.elapsed >= Duration::from_secs_f32(0.15) && boost.timer.elapsed >= boost.timer.checkpoint {
       boost.timer.add_checkpoint(Duration::from_secs_f32(0.05));
       boost.visible = !boost.visible;
     }

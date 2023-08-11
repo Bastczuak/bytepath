@@ -74,7 +74,7 @@ fn main() -> Result<(), String> {
   let mut startup_schedule = Schedule::default();
   startup_schedule.add_stage(
     "startup",
-    SystemStage::single_threaded().with_system(player_spawn_system),
+    SystemStage::single_threaded().with_system(player_spawn_system), // .with_system(test_spawn_system),
   );
 
   let mut game_schedule = Schedule::default();
@@ -88,6 +88,7 @@ fn main() -> Result<(), String> {
   game_schedule.add_stage_after("events", "game", {
     let mut stage = SystemStage::parallel();
     stage.add_system(player_system);
+    stage.add_system(sat_test_system);
     stage.add_system(shooting_system.after(player_system));
     stage.add_system(tick_effect_spawn_system.after(player_system));
     stage.add_system(tick_effect_system.after(player_system));
