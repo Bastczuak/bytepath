@@ -7,7 +7,7 @@ use lyon::{
   geom::{Box2D, Size},
   lyon_tessellation::FillOptions,
   math::{point, Point},
-  path::{Path, PathEvent, Position, Winding},
+  path::{Path, PathEvent, Winding},
   tessellation::{BuffersBuilder, StrokeOptions},
 };
 use rand::Rng;

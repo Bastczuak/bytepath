@@ -72,43 +72,40 @@ fn main() -> Result<(), String> {
   let mut render_state = SystemState::<render::RenderSystemState>::new(&mut world);
 
   let mut startup_schedule = Schedule::default();
-  startup_schedule.add_stage(
-    "startup",
-    SystemStage::single_threaded().with_system(player_spawn_system), // .with_system(test_spawn_system),
-  );
+  startup_schedule.add_systems(player_spawn_system);
+
+  #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+  pub struct BeforeAll;
+  #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+  pub struct Player;
 
   let mut game_schedule = Schedule::default();
-  game_schedule.add_stage("events", {
-    let mut stage = SystemStage::parallel();
-    stage.add_system(Events::<GameEvents>::update_system);
-    stage.add_system(timing_system.after(Events::<GameEvents>::update_system));
-
-    stage
-  });
-  game_schedule.add_stage_after("events", "game", {
-    let mut stage = SystemStage::parallel();
-    stage.add_system(player_system);
-    stage.add_system(sat_test_system);
-    stage.add_system(shooting_system.after(player_system));
-    stage.add_system(tick_effect_spawn_system.after(player_system));
-    stage.add_system(tick_effect_system.after(player_system));
-    stage.add_system(projectile_spawn_system.after(player_system));
-    stage.add_system(projectile_system.after(player_system));
-    stage.add_system(projectile_death_system.after(projectile_system));
-    stage.add_system(player_explosion_spawn_system.after(player_system));
-    stage.add_system(trail_effect_spawn_system.after(player_system));
-    stage.add_system(ammo_pickup_system.after(player_system));
-    stage.add_system(boost_pickup_system.after(player_system));
-    stage.add_system(trail_effect_system.after(trail_effect_spawn_system));
-    stage.add_system(camera_shake_system);
-    stage.add_system(screen_flash_system);
-    stage.add_system(ammo_pickup_spawn_system);
-    stage.add_system(explosion_system);
-    stage.add_system(boost_pickup_spawn_system);
-    stage.add_system(draw_text_system);
-
-    stage
-  });
+  game_schedule.add_systems((Events::<GameEvents>::update_system, timing_system).in_set(BeforeAll));
+  game_schedule.add_systems(player_system.in_set(Player).after(BeforeAll));
+  game_schedule.add_systems(
+    (
+      projectile_spawn_system,
+      tick_effect_spawn_system,
+      player_explosion_spawn_system,
+      trail_effect_spawn_system,
+      ammo_pickup_spawn_system,
+      boost_pickup_spawn_system,
+      shooting_system,
+      tick_effect_system,
+      projectile_system,
+      projectile_death_system,
+      draw_text_system,
+      camera_shake_system,
+      screen_flash_system,
+      boost_pickup_system,
+      ammo_pickup_system,
+      trail_effect_system,
+      explosion_system,
+      sat_test_system,
+    )
+        .after(BeforeAll)
+        .after(Player),
+  );
 
   startup_schedule.run(&mut world);
 
